@@ -1,0 +1,22 @@
+name: better_auth_flutter
+description: A Flutter client for BetterAuth authentication
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+  flutter: ^3.38.0
+
+dependencies:
+  dio: ^5.7.0
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^10.0.0
+  fpdart: ^1.1.0
+  rxdart: ^0.28.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mocktail: ^1.0.4
+  very_good_analysis: ^7.0.0
