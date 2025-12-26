@@ -50,6 +50,12 @@ void main() {
       expect(error.code, 'ERR');
     });
 
+    test('TwoFactorRequired has fixed message', () {
+      const error = TwoFactorRequired();
+      expect(error.message, 'Two-factor authentication required');
+      expect(error.code, isNull);
+    });
+
     test('exhaustive switch on AuthError', () {
       String getErrorType(AuthError error) => switch (error) {
             NetworkError() => 'network',
@@ -65,6 +71,8 @@ void main() {
             OAuthConfigurationError() => 'oauth_config',
             OAuthProviderError() => 'oauth_provider',
             OAuthTokenRejected() => 'oauth_rejected',
+            // Two-factor errors
+            TwoFactorRequired() => 'two_factor_required',
           };
 
       expect(getErrorType(const NetworkError()), 'network');
@@ -79,6 +87,7 @@ void main() {
         'unknown',
       );
       expect(getErrorType(const OAuthCancelled()), 'oauth_cancelled');
+      expect(getErrorType(const TwoFactorRequired()), 'two_factor_required');
     });
 
     test('toString includes code and message', () {

@@ -95,6 +95,7 @@ export 'src/connectivity/connectivity_monitor.dart';
 export 'src/models/auth_error.dart';
 export 'src/models/auth_state.dart';
 export 'src/models/session.dart';
+export 'src/models/two_factor_setup.dart';
 export 'src/models/user.dart';
 
 // Queue
@@ -110,3 +111,7 @@ export 'src/storage/auth_storage.dart';
 export 'src/storage/cookie_storage.dart';
 export 'src/storage/memory_storage_impl.dart';
 export 'src/storage/secure_storage_impl.dart';
+
+// Two-Factor
+export 'src/two_factor/two_factor.dart';
+export 'src/two_factor/two_factor_extension.dart';

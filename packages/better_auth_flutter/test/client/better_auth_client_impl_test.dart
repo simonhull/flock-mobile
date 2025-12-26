@@ -217,6 +217,38 @@ void main() {
             fail('Expected Left');
         }
       });
+
+      test('returns TwoFactorRequired when twoFactorRedirect is true', () async {
+        when(
+          () => mockDio.post<dynamic>(
+            any(),
+            data: any(named: 'data'),
+          ),
+        ).thenAnswer(
+          (_) async => Response(
+            data: {'twoFactorRedirect': true},
+            statusCode: 200,
+            requestOptions: RequestOptions(),
+          ),
+        );
+
+        final result = await client
+            .signIn(
+              email: 'test@example.com',
+              password: 'password123',
+            )
+            .run();
+
+        switch (result) {
+          case Left(:final value):
+            expect(value, isA<TwoFactorRequired>());
+          case Right():
+            fail('Expected Left with TwoFactorRequired');
+        }
+
+        // Should NOT emit Unauthenticated - partial session in cookies
+        expect(client.currentState, isNot(isA<Authenticated>()));
+      });
     });
 
     group('signOut', () {

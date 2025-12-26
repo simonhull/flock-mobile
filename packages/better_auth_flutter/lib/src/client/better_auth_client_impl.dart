@@ -339,6 +339,13 @@ final class BetterAuthClientImpl implements BetterAuthClient {
         }
 
         final responseData = response.data as Map<String, dynamic>;
+
+        // Check for 2FA redirect - partial session maintained in cookies
+        if (responseData['twoFactorRedirect'] == true) {
+          // Don't emit Unauthenticated - cookies hold partial session
+          throw const TwoFactorRequired();
+        }
+
         final user = User.fromJson(
           responseData['user'] as Map<String, dynamic>,
         );
@@ -355,7 +362,10 @@ final class BetterAuthClientImpl implements BetterAuthClient {
         return state;
       },
       (error, stackTrace) {
-        _stateController.add(const Unauthenticated());
+        // Don't emit Unauthenticated for TwoFactorRequired
+        if (error is! TwoFactorRequired) {
+          _stateController.add(const Unauthenticated());
+        }
         return _mapError(error, stackTrace);
       },
     );

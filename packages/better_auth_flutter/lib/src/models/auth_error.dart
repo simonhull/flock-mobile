@@ -60,6 +60,19 @@ final class UnknownError extends AuthError {
   const UnknownError({required super.message, super.code});
 }
 
+// === Two-Factor Errors ===
+
+/// Sign-in requires two-factor authentication.
+///
+/// This error indicates the user has 2FA enabled and must complete
+/// verification before sign-in can succeed. The partial session is
+/// maintained via cookies - call `twoFactor.verifyTotp()` or
+/// `twoFactor.verifyBackupCode()` to complete authentication.
+final class TwoFactorRequired extends AuthError {
+  const TwoFactorRequired()
+      : super(message: 'Two-factor authentication required');
+}
+
 // === OAuth Errors ===
 
 /// User cancelled the OAuth flow.
