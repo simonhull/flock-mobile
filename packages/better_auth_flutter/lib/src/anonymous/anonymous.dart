@@ -1,4 +1,5 @@
-import 'package:better_auth_flutter/src/client/better_auth_client_impl.dart';
+import 'package:better_auth_flutter/src/client/error_mapper.dart';
+import 'package:better_auth_flutter/src/client/plugin_context.dart';
 import 'package:better_auth_flutter/src/models/auth_error.dart';
 import 'package:better_auth_flutter/src/models/auth_state.dart';
 import 'package:better_auth_flutter/src/models/session.dart';
@@ -27,11 +28,9 @@ import 'package:fpdart/fpdart.dart';
 /// ).run();
 /// ```
 final class Anonymous {
-  Anonymous(this._client);
+  Anonymous(this._ctx);
 
-  final BetterAuthClientImpl _client;
-
-  Dio get _dio => _client.internalDio;
+  final PluginContext _ctx;
 
   /// Sign in anonymously.
   ///
@@ -51,16 +50,16 @@ final class Anonymous {
   TaskEither<AuthError, Authenticated> signIn() {
     return TaskEither.tryCatch(
       () async {
-        _client.internalStateController.add(const AuthLoading());
+        _ctx.emitState(const AuthLoading());
 
-        final response = await _dio.post<dynamic>(
+        final response = await _ctx.dio.post<dynamic>(
           '/api/auth/anonymous/sign-in',
           data: <String, dynamic>{},
         );
 
         if (response.statusCode != 200) {
-          _client.internalStateController.add(const Unauthenticated());
-          throw _mapStatusToError(response);
+          _ctx.emitState(const Unauthenticated());
+          throw _mapResponse(response);
         }
 
         final responseData = response.data as Map<String, dynamic>;
@@ -71,17 +70,17 @@ final class Anonymous {
           responseData['session'] as Map<String, dynamic>,
         );
 
-        await _client.internalStorage.saveUser(user).run();
-        await _client.internalStorage.saveSession(session).run();
+        await _ctx.storage.saveUser(user).run();
+        await _ctx.storage.saveSession(session).run();
 
         final state = Authenticated(user: user, session: session);
-        _client.internalStateController.add(state);
+        _ctx.emitState(state);
 
         return state;
       },
       (error, stackTrace) {
-        _client.internalStateController.add(const Unauthenticated());
-        return _mapError(error, stackTrace);
+        _ctx.emitState(const Unauthenticated());
+        return ErrorMapper.map(error, stackTrace);
       },
     );
   }
@@ -110,9 +109,9 @@ final class Anonymous {
   }) {
     return TaskEither.tryCatch(
       () async {
-        _client.internalStateController.add(const AuthLoading());
+        _ctx.emitState(const AuthLoading());
 
-        final response = await _dio.post<dynamic>(
+        final response = await _ctx.dio.post<dynamic>(
           '/api/auth/anonymous/link',
           data: {
             'email': email,
@@ -122,8 +121,8 @@ final class Anonymous {
         );
 
         if (response.statusCode != 200) {
-          _client.internalStateController.add(const Unauthenticated());
-          throw _mapStatusToError(response);
+          _ctx.emitState(const Unauthenticated());
+          throw _mapResponse(response);
         }
 
         final responseData = response.data as Map<String, dynamic>;
@@ -134,17 +133,17 @@ final class Anonymous {
           responseData['session'] as Map<String, dynamic>,
         );
 
-        await _client.internalStorage.saveUser(user).run();
-        await _client.internalStorage.saveSession(session).run();
+        await _ctx.storage.saveUser(user).run();
+        await _ctx.storage.saveSession(session).run();
 
         final state = Authenticated(user: user, session: session);
-        _client.internalStateController.add(state);
+        _ctx.emitState(state);
 
         return state;
       },
       (error, stackTrace) {
-        _client.internalStateController.add(const Unauthenticated());
-        return _mapError(error, stackTrace);
+        _ctx.emitState(const Unauthenticated());
+        return ErrorMapper.map(error, stackTrace);
       },
     );
   }
@@ -168,12 +167,12 @@ final class Anonymous {
   }) {
     return TaskEither.tryCatch(
       () async {
-        _client.internalStateController.add(const AuthLoading());
+        _ctx.emitState(const AuthLoading());
 
         // Get OAuth credential from provider
         final credential = await provider.authenticate();
 
-        final response = await _dio.post<dynamic>(
+        final response = await _ctx.dio.post<dynamic>(
           '/api/auth/anonymous/link',
           data: {
             'providerId': provider.providerId,
@@ -183,8 +182,8 @@ final class Anonymous {
         );
 
         if (response.statusCode != 200) {
-          _client.internalStateController.add(const Unauthenticated());
-          throw _mapStatusToError(response);
+          _ctx.emitState(const Unauthenticated());
+          throw _mapResponse(response);
         }
 
         final responseData = response.data as Map<String, dynamic>;
@@ -195,53 +194,34 @@ final class Anonymous {
           responseData['session'] as Map<String, dynamic>,
         );
 
-        await _client.internalStorage.saveUser(user).run();
-        await _client.internalStorage.saveSession(session).run();
+        await _ctx.storage.saveUser(user).run();
+        await _ctx.storage.saveSession(session).run();
 
         final state = Authenticated(user: user, session: session);
-        _client.internalStateController.add(state);
+        _ctx.emitState(state);
 
         return state;
       },
       (error, stackTrace) {
-        _client.internalStateController.add(const Unauthenticated());
-        return _mapError(error, stackTrace);
+        _ctx.emitState(const Unauthenticated());
+        return ErrorMapper.map(error, stackTrace);
       },
     );
   }
 
   // === Error Handling ===
 
-  AuthError _mapStatusToError(Response<dynamic> response) {
-    final data = response.data;
-
-    String? code;
-    String? message;
-
-    if (data is Map<String, dynamic>) {
-      code = data['code'] as String?;
-      message = data['message'] as String?;
-    }
-
-    return switch (code) {
-      'NOT_ANONYMOUS' => const NotAnonymous(),
-      'EMAIL_ALREADY_EXISTS' || 'USER_ALREADY_EXISTS' =>
-        const UserAlreadyExists(),
-      'ACCOUNT_ALREADY_LINKED' => const AccountAlreadyLinked(),
-      _ => UnknownError(message: message ?? 'Request failed', code: code),
-    };
-  }
-
-  AuthError _mapError(Object error, StackTrace stackTrace) {
-    if (error is AuthError) return error;
-
-    if (error is DioException) {
-      if (error.response != null) {
-        return _mapStatusToError(error.response!);
-      }
-      return const NetworkError();
-    }
-
-    return UnknownError(message: error.toString());
+  /// Map response to anonymous-specific errors, falling back to standard mapping.
+  AuthError _mapResponse(Response<dynamic> response) {
+    return ErrorMapper.mapResponse(
+      response,
+      onCode: (code, message) => switch (code) {
+        'NOT_ANONYMOUS' => const NotAnonymous(),
+        'EMAIL_ALREADY_EXISTS' || 'USER_ALREADY_EXISTS' =>
+          const UserAlreadyExists(),
+        'ACCOUNT_ALREADY_LINKED' => const AccountAlreadyLinked(),
+        _ => null, // Fall back to standard mapping
+      },
+    );
   }
 }

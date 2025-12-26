@@ -1,81 +1,28 @@
 import 'package:better_auth_flutter/better_auth_flutter.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fpdart/fpdart.dart';
-import 'package:http_mock_adapter/http_mock_adapter.dart';
 import 'package:mocktail/mocktail.dart';
+
+import '../helpers/auth_test_harness.dart';
 
 class MockOAuthProvider extends Mock implements OAuthProvider {}
 
 void main() {
-  late Dio dio;
-  late DioAdapter dioAdapter;
-  late BetterAuthClientImpl client;
-  late MemoryStorageImpl storage;
+  final harness = AuthTestHarness();
   late Anonymous anonymous;
 
-  final mockAnonAuthResponse = {
-    'user': {
-      'id': 'anon-user-123',
-      'email': '',
-      'name': null,
-      'emailVerified': false,
-      'createdAt': '2024-01-01T00:00:00.000Z',
-      'updatedAt': '2024-01-01T00:00:00.000Z',
-    },
-    'session': {
-      'id': 'session-456',
-      'token': 'anon-token-abc',
-      'userId': 'anon-user-123',
-      'expiresAt':
-          DateTime.now().add(const Duration(days: 30)).toIso8601String(),
-      'createdAt': '2024-01-01T00:00:00.000Z',
-      'updatedAt': '2024-01-01T00:00:00.000Z',
-    },
-  };
-
-  final mockLinkedAuthResponse = {
-    'user': {
-      'id': 'anon-user-123',
-      'email': 'upgraded@example.com',
-      'name': 'New User',
-      'emailVerified': false,
-      'createdAt': '2024-01-01T00:00:00.000Z',
-      'updatedAt': '2024-01-01T12:00:00.000Z',
-    },
-    'session': {
-      'id': 'session-789',
-      'token': 'linked-token-xyz',
-      'userId': 'anon-user-123',
-      'expiresAt':
-          DateTime.now().add(const Duration(days: 30)).toIso8601String(),
-      'createdAt': '2024-01-01T12:00:00.000Z',
-      'updatedAt': '2024-01-01T12:00:00.000Z',
-    },
-  };
-
   setUp(() {
-    dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'));
-    dioAdapter = DioAdapter(dio: dio);
-    storage = MemoryStorageImpl();
-    client = BetterAuthClientImpl(
-      baseUrl: 'https://api.example.com',
-      storage: storage,
-      dio: dio,
-    );
-    anonymous = Anonymous(client);
+    harness.setUp();
+    anonymous = Anonymous(harness.pluginContext);
   });
 
-  tearDown(() async {
-    await client.dispose();
-  });
+  tearDown(harness.tearDown);
 
   group('Anonymous.signIn', () {
     test('creates anonymous user and returns Authenticated', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/sign-in',
-        (server) => server.reply(200, mockAnonAuthResponse),
-        data: <String, dynamic>{},
+        AuthFixtures.anonymousAuthResponse(),
       );
 
       final result = await anonymous.signIn().run();
@@ -93,33 +40,29 @@ void main() {
     });
 
     test('emits AuthLoading then Authenticated', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/sign-in',
-        (server) => server.reply(200, mockAnonAuthResponse),
-        data: <String, dynamic>{},
+        AuthFixtures.anonymousAuthResponse(),
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await anonymous.signIn().run();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => anonymous.signIn().run(),
+      );
 
       expect(states, contains(isA<AuthLoading>()));
       expect(states, contains(isA<Authenticated>()));
     });
 
     test('persists user and session to storage', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/sign-in',
-        (server) => server.reply(200, mockAnonAuthResponse),
-        data: <String, dynamic>{},
+        AuthFixtures.anonymousAuthResponse(),
       );
 
       await anonymous.signIn().run();
 
-      final userResult = await storage.getUser().run();
-      final sessionResult = await storage.getSession().run();
+      final userResult = await harness.storage.getUser().run();
+      final sessionResult = await harness.storage.getSession().run();
 
       expect(userResult.isRight(), true);
       expect(sessionResult.isRight(), true);
@@ -138,17 +81,7 @@ void main() {
     });
 
     test('returns NetworkError on connection failure', () async {
-      dioAdapter.onPost(
-        '/api/auth/anonymous/sign-in',
-        (server) => server.throws(
-          0,
-          DioException(
-            type: DioExceptionType.connectionError,
-            requestOptions: RequestOptions(path: '/api/auth/anonymous/sign-in'),
-          ),
-        ),
-        data: <String, dynamic>{},
-      );
+      harness.onNetworkError('/api/auth/anonymous/sign-in');
 
       final result = await anonymous.signIn().run();
 
@@ -162,27 +95,35 @@ void main() {
     });
 
     test('emits Unauthenticated on failure', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/sign-in',
-        (server) => server.reply(500, {'message': 'Server error'}),
-        data: <String, dynamic>{},
+        AuthFixtures.error(message: 'Server error'),
+        statusCode: 500,
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await anonymous.signIn().run();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => anonymous.signIn().run(),
+      );
 
       expect(states, contains(isA<Unauthenticated>()));
     });
   });
 
   group('Anonymous.linkEmail', () {
+    final mockLinkedAuthResponse = AuthFixtures.authResponse(
+      userId: 'anon-user-123',
+      email: 'upgraded@example.com',
+      name: 'New User',
+      emailVerified: false,
+      sessionId: 'session-789',
+      token: 'linked-token-xyz',
+      expiresIn: const Duration(days: 30),
+    );
+
     test('links email and returns Authenticated', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(200, mockLinkedAuthResponse),
+        mockLinkedAuthResponse,
         data: {
           'email': 'upgraded@example.com',
           'password': 'securepassword123',
@@ -209,9 +150,9 @@ void main() {
     });
 
     test('preserves user ID after linking', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(200, mockLinkedAuthResponse),
+        mockLinkedAuthResponse,
         data: {
           'email': 'upgraded@example.com',
           'password': 'password',
@@ -234,9 +175,9 @@ void main() {
     });
 
     test('sends name when provided', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(200, mockLinkedAuthResponse),
+        mockLinkedAuthResponse,
         data: {
           'email': 'upgraded@example.com',
           'password': 'password',
@@ -256,37 +197,36 @@ void main() {
     });
 
     test('emits AuthLoading then Authenticated', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(200, mockLinkedAuthResponse),
+        mockLinkedAuthResponse,
         data: {
           'email': 'upgraded@example.com',
           'password': 'password',
         },
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await anonymous
-          .linkEmail(
-            email: 'upgraded@example.com',
-            password: 'password',
-          )
-          .run();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => anonymous
+            .linkEmail(
+              email: 'upgraded@example.com',
+              password: 'password',
+            )
+            .run(),
+      );
 
       expect(states, contains(isA<AuthLoading>()));
       expect(states, contains(isA<Authenticated>()));
     });
 
     test('returns NotAnonymous when user is not anonymous', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(400, {
-          'message': 'Current user is not anonymous',
-          'code': 'NOT_ANONYMOUS',
-        }),
+        AuthFixtures.error(
+          message: 'Current user is not anonymous',
+          code: 'NOT_ANONYMOUS',
+        ),
+        statusCode: 400,
         data: {
           'email': 'upgraded@example.com',
           'password': 'password',
@@ -310,12 +250,13 @@ void main() {
     });
 
     test('returns UserAlreadyExists when email is taken', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(409, {
-          'message': 'Email already in use',
-          'code': 'EMAIL_ALREADY_EXISTS',
-        }),
+        AuthFixtures.error(
+          message: 'Email already in use',
+          code: 'EMAIL_ALREADY_EXISTS',
+        ),
+        statusCode: 409,
         data: {
           'email': 'taken@example.com',
           'password': 'password',
@@ -339,12 +280,13 @@ void main() {
     });
 
     test('returns AccountAlreadyLinked when already linked', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(400, {
-          'message': 'Account already linked',
-          'code': 'ACCOUNT_ALREADY_LINKED',
-        }),
+        AuthFixtures.error(
+          message: 'Account already linked',
+          code: 'ACCOUNT_ALREADY_LINKED',
+        ),
+        statusCode: 400,
         data: {
           'email': 'upgraded@example.com',
           'password': 'password',
@@ -368,28 +310,27 @@ void main() {
     });
 
     test('emits Unauthenticated on failure', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(400, {
-          'message': 'Not anonymous',
-          'code': 'NOT_ANONYMOUS',
-        }),
+        AuthFixtures.error(
+          message: 'Not anonymous',
+          code: 'NOT_ANONYMOUS',
+        ),
+        statusCode: 400,
         data: {
           'email': 'upgraded@example.com',
           'password': 'password',
         },
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await anonymous
-          .linkEmail(
-            email: 'upgraded@example.com',
-            password: 'password',
-          )
-          .run();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => anonymous
+            .linkEmail(
+              email: 'upgraded@example.com',
+              password: 'password',
+            )
+            .run(),
+      );
 
       expect(states, contains(isA<Unauthenticated>()));
     });
@@ -397,6 +338,16 @@ void main() {
 
   group('Anonymous.linkSocial', () {
     late MockOAuthProvider mockProvider;
+
+    final mockLinkedAuthResponse = AuthFixtures.authResponse(
+      userId: 'anon-user-123',
+      email: 'upgraded@example.com',
+      name: 'New User',
+      emailVerified: false,
+      sessionId: 'session-789',
+      token: 'linked-token-xyz',
+      expiresIn: const Duration(days: 30),
+    );
 
     setUp(() {
       mockProvider = MockOAuthProvider();
@@ -411,9 +362,9 @@ void main() {
         ),
       );
 
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(200, mockLinkedAuthResponse),
+        mockLinkedAuthResponse,
         data: {
           'providerId': 'google',
           'idToken': 'google-id-token',
@@ -441,9 +392,9 @@ void main() {
         ),
       );
 
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(200, mockLinkedAuthResponse),
+        mockLinkedAuthResponse,
         data: {
           'providerId': 'google',
           'idToken': 'google-id-token',
@@ -464,12 +415,13 @@ void main() {
         ),
       );
 
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(400, {
-          'message': 'Current user is not anonymous',
-          'code': 'NOT_ANONYMOUS',
-        }),
+        AuthFixtures.error(
+          message: 'Current user is not anonymous',
+          code: 'NOT_ANONYMOUS',
+        ),
+        statusCode: 400,
         data: {
           'providerId': 'google',
           'idToken': 'google-id-token',
@@ -496,12 +448,13 @@ void main() {
         ),
       );
 
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(400, {
-          'message': 'Account already linked',
-          'code': 'ACCOUNT_ALREADY_LINKED',
-        }),
+        AuthFixtures.error(
+          message: 'Account already linked',
+          code: 'ACCOUNT_ALREADY_LINKED',
+        ),
+        statusCode: 400,
         data: {
           'providerId': 'google',
           'idToken': 'google-id-token',
@@ -542,9 +495,9 @@ void main() {
         ),
       );
 
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(200, mockLinkedAuthResponse),
+        mockLinkedAuthResponse,
         data: {
           'providerId': 'google',
           'idToken': 'google-id-token',
@@ -552,11 +505,9 @@ void main() {
         },
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await anonymous.linkSocial(provider: mockProvider).run();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => anonymous.linkSocial(provider: mockProvider).run(),
+      );
 
       expect(states, contains(isA<AuthLoading>()));
       expect(states, contains(isA<Authenticated>()));
@@ -570,12 +521,13 @@ void main() {
         ),
       );
 
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/anonymous/link',
-        (server) => server.reply(400, {
-          'message': 'Not anonymous',
-          'code': 'NOT_ANONYMOUS',
-        }),
+        AuthFixtures.error(
+          message: 'Not anonymous',
+          code: 'NOT_ANONYMOUS',
+        ),
+        statusCode: 400,
         data: {
           'providerId': 'google',
           'idToken': 'google-id-token',
@@ -583,11 +535,9 @@ void main() {
         },
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await anonymous.linkSocial(provider: mockProvider).run();
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => anonymous.linkSocial(provider: mockProvider).run(),
+      );
 
       expect(states, contains(isA<Unauthenticated>()));
     });

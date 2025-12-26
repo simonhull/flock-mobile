@@ -1,4 +1,5 @@
-import 'package:better_auth_flutter/src/client/better_auth_client_impl.dart';
+import 'package:better_auth_flutter/src/client/error_mapper.dart';
+import 'package:better_auth_flutter/src/client/plugin_context.dart';
 import 'package:better_auth_flutter/src/models/auth_error.dart';
 import 'package:better_auth_flutter/src/models/auth_state.dart';
 import 'package:better_auth_flutter/src/models/session.dart';
@@ -31,11 +32,9 @@ import 'package:fpdart/fpdart.dart';
 /// }
 /// ```
 final class SSO {
-  SSO(this._client);
+  SSO(this._ctx);
 
-  final BetterAuthClientImpl _client;
-
-  Dio get _dio => _client.internalDio;
+  final PluginContext _ctx;
 
   /// Sign in with SSO.
   ///
@@ -65,10 +64,10 @@ final class SSO {
           );
         }
 
-        _client.internalStateController.add(const AuthLoading());
+        _ctx.emitState(const AuthLoading());
 
         // 1. Get authorization URL from server
-        final initResponse = await _dio.post<dynamic>(
+        final initResponse = await _ctx.dio.post<dynamic>(
           '/api/auth/sso/sign-in',
           data: <String, dynamic>{
             if (email != null) 'email': email,
@@ -78,7 +77,7 @@ final class SSO {
         );
 
         if (initResponse.statusCode != 200) {
-          throw _mapStatusToError(initResponse);
+          throw _mapResponse(initResponse);
         }
 
         final authResponse = SSOAuthorizationResponse.fromJson(
@@ -98,13 +97,13 @@ final class SSO {
         }
 
         // 4. Handle callback with server
-        final tokenResponse = await _dio.get<dynamic>(
+        final tokenResponse = await _ctx.dio.get<dynamic>(
           '/api/auth/sso/callback/${authResponse.providerId}',
           queryParameters: callbackUri.queryParameters,
         );
 
         if (tokenResponse.statusCode != 200) {
-          throw _mapStatusToError(tokenResponse);
+          throw _mapResponse(tokenResponse);
         }
 
         // 5. Extract session
@@ -114,16 +113,16 @@ final class SSO {
           data['session'] as Map<String, dynamic>,
         );
 
-        await _client.internalStorage.saveUser(user).run();
-        await _client.internalStorage.saveSession(session).run();
+        await _ctx.storage.saveUser(user).run();
+        await _ctx.storage.saveSession(session).run();
 
         final state = Authenticated(user: user, session: session);
-        _client.internalStateController.add(state);
+        _ctx.emitState(state);
 
         return state;
       },
       (error, stackTrace) {
-        _client.internalStateController.add(const Unauthenticated());
+        _ctx.emitState(const Unauthenticated());
         return _mapError(error, stackTrace);
       },
     );
@@ -141,13 +140,13 @@ final class SSO {
       () async {
         final domain = email.split('@').last;
 
-        final response = await _dio.get<dynamic>(
+        final response = await _ctx.dio.get<dynamic>(
           '/api/auth/sso/providers',
           queryParameters: {'domain': domain},
         );
 
         if (response.statusCode != 200) {
-          throw _mapStatusToError(response);
+          throw _mapResponse(response);
         }
 
         final data = response.data as Map<String, dynamic>;
@@ -172,10 +171,10 @@ final class SSO {
   TaskEither<AuthError, List<SSOProvider>> listProviders() {
     return TaskEither.tryCatch(
       () async {
-        final response = await _dio.get<dynamic>('/api/auth/sso/providers');
+        final response = await _ctx.dio.get<dynamic>('/api/auth/sso/providers');
 
         if (response.statusCode != 200) {
-          throw _mapStatusToError(response);
+          throw _mapResponse(response);
         }
 
         final data = response.data as Map<String, dynamic>;
@@ -191,48 +190,33 @@ final class SSO {
 
   // === Error Handling ===
 
-  AuthError _mapStatusToError(Response<dynamic> response) {
-    final data = response.data;
-
-    String? code;
-    String? message;
-
-    if (data is Map<String, dynamic>) {
-      code = data['code'] as String?;
-      message = data['message'] as String?;
-    }
-
-    return switch (code) {
-      'SSO_PROVIDER_NOT_FOUND' => const SSOProviderNotFound(),
-      'SSO_PROVIDER_DISABLED' => const SSOProviderDisabled(),
-      'SSO_STATE_MISMATCH' => const SSOStateMismatch(),
-      'SSO_CALLBACK_ERROR' => SSOCallbackError(
-        message: message ?? 'Callback error',
-      ),
-      _ => UnknownError(message: message ?? 'Request failed', code: code),
-    };
+  /// Map response to SSO-specific errors, falling back to standard mapping.
+  AuthError _mapResponse(Response<dynamic> response) {
+    return ErrorMapper.mapResponse(
+      response,
+      onCode: (code, message) => switch (code) {
+        'SSO_PROVIDER_NOT_FOUND' => const SSOProviderNotFound(),
+        'SSO_PROVIDER_DISABLED' => const SSOProviderDisabled(),
+        'SSO_STATE_MISMATCH' => const SSOStateMismatch(),
+        'SSO_CALLBACK_ERROR' => SSOCallbackError(
+          message: message ?? 'Callback error',
+        ),
+        _ => null, // Fall back to standard mapping
+      },
+    );
   }
 
+  /// Map any error to AuthError, with SSO-specific handling.
   AuthError _mapError(Object error, StackTrace stackTrace) {
-    if (error is AuthError) return error;
-
-    if (error is DioException) {
-      if (error.response != null) {
-        return _mapStatusToError(error.response!);
-      }
-
-      if (error.type == DioExceptionType.connectionError ||
-          error.type == DioExceptionType.connectionTimeout) {
-        return const NetworkError();
+    // Handle SSO-specific: browser cancellation
+    if (error is! AuthError && error is! DioException) {
+      final errorString = error.toString().toLowerCase();
+      if (errorString.contains('cancel')) {
+        return const SSOCancelled();
       }
     }
 
-    // Browser handler errors - detect cancellation
-    final errorString = error.toString().toLowerCase();
-    if (errorString.contains('cancel')) {
-      return const SSOCancelled();
-    }
-
-    return UnknownError(message: error.toString());
+    // Delegate to shared mapper
+    return ErrorMapper.map(error, stackTrace);
   }
 }

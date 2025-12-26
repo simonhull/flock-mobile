@@ -24,5 +24,5 @@ extension TwoFactorExtension on BetterAuthClientImpl {
   /// Two-factor authentication capability.
   ///
   /// Provides methods to enable, disable, and verify 2FA.
-  TwoFactor get twoFactor => _instances[this] ??= TwoFactor(this);
+  TwoFactor get twoFactor => _instances[this] ??= TwoFactor(pluginContext);
 }

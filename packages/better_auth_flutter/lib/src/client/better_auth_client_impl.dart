@@ -4,6 +4,7 @@ import 'package:better_auth_flutter/src/client/better_auth_client.dart';
 import 'package:better_auth_flutter/src/client/interceptors/deduplication_interceptor.dart';
 import 'package:better_auth_flutter/src/client/interceptors/retry_interceptor.dart';
 import 'package:better_auth_flutter/src/client/interceptors/token_refresh_interceptor.dart';
+import 'package:better_auth_flutter/src/client/plugin_context.dart';
 import 'package:better_auth_flutter/src/models/models.dart';
 import 'package:better_auth_flutter/src/storage/auth_storage.dart';
 import 'package:better_auth_flutter/src/storage/cookie_storage.dart';
@@ -103,6 +104,16 @@ final class BetterAuthClientImpl implements BetterAuthClient {
 
   /// Internal state controller for package extensions.
   BehaviorSubject<AuthState> get internalStateController => _stateController;
+
+  /// Context for plugins to access client capabilities.
+  ///
+  /// Plugins should use this instead of the `internalXxx` accessors.
+  PluginContext get pluginContext => PluginContext(
+        dio: _dio,
+        storage: _storage,
+        emitState: _stateController.add,
+        currentState: () => _stateController.value,
+      );
 
   @override
   Stream<AuthState> get authStateChanges => _stateController.stream;

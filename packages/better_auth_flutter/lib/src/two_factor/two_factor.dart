@@ -1,4 +1,5 @@
-import 'package:better_auth_flutter/src/client/better_auth_client_impl.dart';
+import 'package:better_auth_flutter/src/client/error_mapper.dart';
+import 'package:better_auth_flutter/src/client/plugin_context.dart';
 import 'package:better_auth_flutter/src/models/auth_error.dart';
 import 'package:better_auth_flutter/src/models/auth_state.dart';
 import 'package:better_auth_flutter/src/models/session.dart';
@@ -22,11 +23,9 @@ import 'package:fpdart/fpdart.dart';
 /// final auth = await twoFactor.verifyTotp(code: '123456').run();
 /// ```
 final class TwoFactor {
-  TwoFactor(this._client);
+  TwoFactor(this._ctx);
 
-  final BetterAuthClientImpl _client;
-
-  Dio get _dio => _client.internalDio;
+  final PluginContext _ctx;
 
   // === Setup ===
 
@@ -44,7 +43,7 @@ final class TwoFactor {
   }) {
     return TaskEither.tryCatch(
       () async {
-        final response = await _dio.post<dynamic>(
+        final response = await _ctx.dio.post<dynamic>(
           '/api/auth/two-factor/enable',
           data: {
             'password': password,
@@ -53,12 +52,12 @@ final class TwoFactor {
         );
 
         if (response.statusCode != 200) {
-          throw _mapStatusToError(response);
+          throw _mapResponse(response);
         }
 
         return TwoFactorSetup.fromJson(response.data as Map<String, dynamic>);
       },
-      _mapError,
+      ErrorMapper.map,
     );
   }
 
@@ -68,19 +67,19 @@ final class TwoFactor {
   TaskEither<AuthError, String> getTotpUri({required String password}) {
     return TaskEither.tryCatch(
       () async {
-        final response = await _dio.post<dynamic>(
+        final response = await _ctx.dio.post<dynamic>(
           '/api/auth/two-factor/get-totp-uri',
           data: {'password': password},
         );
 
         if (response.statusCode != 200) {
-          throw _mapStatusToError(response);
+          throw _mapResponse(response);
         }
 
         final data = response.data as Map<String, dynamic>;
         return data['totpURI'] as String;
       },
-      _mapError,
+      ErrorMapper.map,
     );
   }
 
@@ -88,18 +87,18 @@ final class TwoFactor {
   TaskEither<AuthError, Unit> disable({required String password}) {
     return TaskEither.tryCatch(
       () async {
-        final response = await _dio.post<dynamic>(
+        final response = await _ctx.dio.post<dynamic>(
           '/api/auth/two-factor/disable',
           data: {'password': password},
         );
 
         if (response.statusCode != 200) {
-          throw _mapStatusToError(response);
+          throw _mapResponse(response);
         }
 
         return unit;
       },
-      _mapError,
+      ErrorMapper.map,
     );
   }
 
@@ -142,9 +141,9 @@ final class TwoFactor {
   }) {
     return TaskEither.tryCatch(
       () async {
-        _client.internalStateController.add(const AuthLoading());
+        _ctx.emitState(const AuthLoading());
 
-        final response = await _dio.post<dynamic>(
+        final response = await _ctx.dio.post<dynamic>(
           endpoint,
           data: {
             'code': code,
@@ -153,8 +152,8 @@ final class TwoFactor {
         );
 
         if (response.statusCode != 200) {
-          _client.internalStateController.add(const Unauthenticated());
-          throw _mapStatusToError(response);
+          _ctx.emitState(const Unauthenticated());
+          throw _mapResponse(response);
         }
 
         final responseData = response.data as Map<String, dynamic>;
@@ -165,17 +164,17 @@ final class TwoFactor {
           responseData['session'] as Map<String, dynamic>,
         );
 
-        await _client.internalStorage.saveUser(user).run();
-        await _client.internalStorage.saveSession(session).run();
+        await _ctx.storage.saveUser(user).run();
+        await _ctx.storage.saveSession(session).run();
 
         final state = Authenticated(user: user, session: session);
-        _client.internalStateController.add(state);
+        _ctx.emitState(state);
 
         return state;
       },
       (error, stackTrace) {
-        _client.internalStateController.add(const Unauthenticated());
-        return _mapError(error, stackTrace);
+        _ctx.emitState(const Unauthenticated());
+        return ErrorMapper.map(error, stackTrace);
       },
     );
   }
@@ -190,58 +189,37 @@ final class TwoFactor {
   }) {
     return TaskEither.tryCatch(
       () async {
-        final response = await _dio.post<dynamic>(
+        final response = await _ctx.dio.post<dynamic>(
           '/api/auth/two-factor/generate-backup-codes',
           data: {'password': password},
         );
 
         if (response.statusCode != 200) {
-          throw _mapStatusToError(response);
+          throw _mapResponse(response);
         }
 
         final data = response.data as Map<String, dynamic>;
         return (data['backupCodes'] as List).cast<String>();
       },
-      _mapError,
+      ErrorMapper.map,
     );
   }
 
   // === Error Handling ===
 
-  AuthError _mapStatusToError(Response<dynamic> response) {
-    final data = response.data;
-    final statusCode = response.statusCode;
-
-    String? code;
-    String? message;
-
-    if (data is Map<String, dynamic>) {
-      code = data['code'] as String?;
-      message = data['message'] as String?;
-    }
-
-    return switch (statusCode) {
-      401 => const InvalidCredentials(),
-      400 when code == 'INVALID_CODE' =>
-        UnknownError(message: message ?? 'Invalid code', code: code),
-      400 when code == 'TWO_FACTOR_ALREADY_ENABLED' =>
-        UnknownError(message: message ?? 'Already enabled', code: code),
-      400 when code == 'TWO_FACTOR_NOT_ENABLED' =>
-        UnknownError(message: message ?? 'Not enabled', code: code),
-      _ => UnknownError(message: message ?? 'Request failed', code: code),
-    };
-  }
-
-  AuthError _mapError(Object error, StackTrace stackTrace) {
-    if (error is AuthError) return error;
-
-    if (error is DioException) {
-      if (error.response != null) {
-        return _mapStatusToError(error.response!);
-      }
-      return UnknownError(message: error.message ?? 'Network error');
-    }
-
-    return UnknownError(message: error.toString());
+  /// Map response to two-factor-specific errors, falling back to standard mapping.
+  AuthError _mapResponse(Response<dynamic> response) {
+    return ErrorMapper.mapResponse(
+      response,
+      onCode: (code, message) => switch (code) {
+        'INVALID_CODE' =>
+          UnknownError(message: message ?? 'Invalid code', code: code),
+        'TWO_FACTOR_ALREADY_ENABLED' =>
+          UnknownError(message: message ?? 'Already enabled', code: code),
+        'TWO_FACTOR_NOT_ENABLED' =>
+          UnknownError(message: message ?? 'Not enabled', code: code),
+        _ => null, // Fall back to standard mapping
+      },
+    );
   }
 }

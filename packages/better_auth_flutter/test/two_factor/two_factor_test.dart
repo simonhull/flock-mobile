@@ -1,60 +1,24 @@
 import 'package:better_auth_flutter/better_auth_flutter.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http_mock_adapter/http_mock_adapter.dart';
+
+import '../helpers/auth_test_harness.dart';
 
 void main() {
-  late Dio dio;
-  late DioAdapter dioAdapter;
-  late BetterAuthClientImpl client;
-  late MemoryStorageImpl storage;
+  final harness = AuthTestHarness();
   late TwoFactor twoFactor;
 
-  final mockAuthResponse = {
-    'user': {
-      'id': 'user-123',
-      'email': 'test@example.com',
-      'name': 'Test User',
-      'emailVerified': true,
-      'createdAt': '2024-01-01T00:00:00.000Z',
-      'updatedAt': '2024-01-01T00:00:00.000Z',
-    },
-    'session': {
-      'id': 'session-123',
-      'token': 'token-abc',
-      'userId': 'user-123',
-      'expiresAt':
-          DateTime.now().add(const Duration(days: 7)).toIso8601String(),
-      'createdAt': '2024-01-01T00:00:00.000Z',
-      'updatedAt': '2024-01-01T00:00:00.000Z',
-    },
-  };
-
   setUp(() {
-    dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'));
-    dioAdapter = DioAdapter(dio: dio);
-    storage = MemoryStorageImpl();
-    client = BetterAuthClientImpl(
-      baseUrl: 'https://api.example.com',
-      storage: storage,
-      dio: dio,
-    );
-    twoFactor = TwoFactor(client);
+    harness.setUp();
+    twoFactor = TwoFactor(harness.pluginContext);
   });
 
-  tearDown(() async {
-    await client.dispose();
-  });
+  tearDown(harness.tearDown);
 
   group('TwoFactor.enable', () {
     test('returns TwoFactorSetup on success', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/enable',
-        (server) => server.reply(200, {
-          'totpURI': 'otpauth://totp/MyApp:user@example.com?secret=ABC123',
-          'secret': 'ABC123',
-          'backupCodes': ['code1', 'code2', 'code3'],
-        }),
+        AuthFixtures.twoFactorSetup(),
         data: {'password': 'password123'},
       );
 
@@ -72,13 +36,11 @@ void main() {
     });
 
     test('sends issuer when provided', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/enable',
-        (server) => server.reply(200, {
-          'totpURI': 'otpauth://totp/CustomApp:user@example.com?secret=ABC123',
-          'secret': 'ABC123',
-          'backupCodes': ['code1'],
-        }),
+        AuthFixtures.twoFactorSetup(
+          totpUri: 'otpauth://totp/CustomApp:user@example.com?secret=ABC123',
+        ),
         data: {'password': 'password123', 'issuer': 'CustomApp'},
       );
 
@@ -90,12 +52,13 @@ void main() {
     });
 
     test('returns error when already enabled', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/enable',
-        (server) => server.reply(400, {
-          'message': 'Two-factor already enabled',
-          'code': 'TWO_FACTOR_ALREADY_ENABLED',
-        }),
+        AuthFixtures.error(
+          message: 'Two-factor already enabled',
+          code: 'TWO_FACTOR_ALREADY_ENABLED',
+        ),
+        statusCode: 400,
         data: {'password': 'password123'},
       );
 
@@ -105,9 +68,10 @@ void main() {
     });
 
     test('returns error on invalid password', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/enable',
-        (server) => server.reply(401, {'message': 'Invalid password'}),
+        AuthFixtures.error(message: 'Invalid password'),
+        statusCode: 401,
         data: {'password': 'wrongpassword'},
       );
 
@@ -123,11 +87,9 @@ void main() {
 
   group('TwoFactor.getTotpUri', () {
     test('returns TOTP URI on success', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/get-totp-uri',
-        (server) => server.reply(200, {
-          'totpURI': 'otpauth://totp/MyApp:user@example.com?secret=ABC123',
-        }),
+        {'totpURI': 'otpauth://totp/MyApp:user@example.com?secret=ABC123'},
         data: {'password': 'password123'},
       );
 
@@ -143,9 +105,9 @@ void main() {
 
   group('TwoFactor.disable', () {
     test('succeeds with valid password', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/disable',
-        (server) => server.reply(200, {'success': true}),
+        {'success': true},
         data: {'password': 'password123'},
       );
 
@@ -155,9 +117,10 @@ void main() {
     });
 
     test('returns error on invalid password', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/disable',
-        (server) => server.reply(401, {'message': 'Invalid password'}),
+        AuthFixtures.error(message: 'Invalid password'),
+        statusCode: 401,
         data: {'password': 'wrongpassword'},
       );
 
@@ -169,9 +132,9 @@ void main() {
 
   group('TwoFactor.verifyTotp', () {
     test('returns Authenticated on valid code', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/verify-totp',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         data: {'code': '123456'},
       );
 
@@ -188,9 +151,9 @@ void main() {
     });
 
     test('sends trustDevice when true', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/verify-totp',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         data: {'code': '123456', 'trustDevice': true},
       );
 
@@ -202,46 +165,41 @@ void main() {
     });
 
     test('persists user and session on success', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/verify-totp',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         data: {'code': '123456'},
       );
 
       await twoFactor.verifyTotp(code: '123456').run();
 
-      final userResult = await storage.getUser().run();
-      final sessionResult = await storage.getSession().run();
+      final userResult = await harness.storage.getUser().run();
+      final sessionResult = await harness.storage.getSession().run();
 
       expect(userResult.isRight(), true);
       expect(sessionResult.isRight(), true);
     });
 
     test('emits AuthLoading then Authenticated', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/verify-totp',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         data: {'code': '123456'},
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await twoFactor.verifyTotp(code: '123456').run();
-
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => twoFactor.verifyTotp(code: '123456').run(),
+      );
 
       expect(states, contains(isA<AuthLoading>()));
       expect(states, contains(isA<Authenticated>()));
     });
 
     test('returns error on invalid code', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/verify-totp',
-        (server) => server.reply(400, {
-          'message': 'Invalid code',
-          'code': 'INVALID_CODE',
-        }),
+        AuthFixtures.error(message: 'Invalid code', code: 'INVALID_CODE'),
+        statusCode: 400,
         data: {'code': '000000'},
       );
 
@@ -253,9 +211,9 @@ void main() {
 
   group('TwoFactor.verifyBackupCode', () {
     test('returns Authenticated on valid backup code', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/verify-backup-code',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         data: {'code': 'backup-code-1'},
       );
 
@@ -270,9 +228,9 @@ void main() {
     });
 
     test('sends trustDevice when true', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/verify-backup-code',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         data: {'code': 'backup-code-1', 'trustDevice': true},
       );
 
@@ -284,12 +242,10 @@ void main() {
     });
 
     test('returns error on invalid backup code', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/verify-backup-code',
-        (server) => server.reply(400, {
-          'message': 'Invalid backup code',
-          'code': 'INVALID_CODE',
-        }),
+        AuthFixtures.error(message: 'Invalid backup code', code: 'INVALID_CODE'),
+        statusCode: 400,
         data: {'code': 'invalid-code'},
       );
 
@@ -302,11 +258,9 @@ void main() {
 
   group('TwoFactor.generateBackupCodes', () {
     test('returns new backup codes on success', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/generate-backup-codes',
-        (server) => server.reply(200, {
-          'backupCodes': ['new-code-1', 'new-code-2', 'new-code-3'],
-        }),
+        {'backupCodes': ['new-code-1', 'new-code-2', 'new-code-3']},
         data: {'password': 'password123'},
       );
 
@@ -324,9 +278,10 @@ void main() {
     });
 
     test('returns error on invalid password', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/two-factor/generate-backup-codes',
-        (server) => server.reply(401, {'message': 'Invalid password'}),
+        AuthFixtures.error(message: 'Invalid password'),
+        statusCode: 401,
         data: {'password': 'wrongpassword'},
       );
 

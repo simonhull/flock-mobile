@@ -1,4 +1,5 @@
-import 'package:better_auth_flutter/src/client/better_auth_client_impl.dart';
+import 'package:better_auth_flutter/src/client/error_mapper.dart';
+import 'package:better_auth_flutter/src/client/plugin_context.dart';
 import 'package:better_auth_flutter/src/models/auth_error.dart';
 import 'package:better_auth_flutter/src/models/auth_state.dart';
 import 'package:better_auth_flutter/src/models/session.dart';
@@ -30,11 +31,9 @@ import 'package:fpdart/fpdart.dart';
 /// await client.passkey.remove(passkeyId: 'pk-123').run();
 /// ```
 final class Passkey {
-  Passkey(this._client);
+  Passkey(this._ctx);
 
-  final BetterAuthClientImpl _client;
-
-  Dio get _dio => _client.internalDio;
+  final PluginContext _ctx;
 
   /// Register a new passkey for the current user.
   ///
@@ -60,12 +59,12 @@ final class Passkey {
         }
 
         // 2. Get registration options from server
-        final optionsResponse = await _dio.post<dynamic>(
+        final optionsResponse = await _ctx.dio.post<dynamic>(
           '/api/auth/passkey/generate-registration-options',
         );
 
         if (optionsResponse.statusCode != 200) {
-          throw _mapStatusToError(optionsResponse);
+          throw _mapResponse(optionsResponse);
         }
 
         final options = RegistrationOptions.fromJson(
@@ -76,7 +75,7 @@ final class Passkey {
         final credential = await authenticator.createCredential(options);
 
         // 4. Send to server for verification
-        final verifyResponse = await _dio.post<dynamic>(
+        final verifyResponse = await _ctx.dio.post<dynamic>(
           '/api/auth/passkey/verify-registration',
           data: {
             ...credential.toJson(),
@@ -85,7 +84,7 @@ final class Passkey {
         );
 
         if (verifyResponse.statusCode != 200) {
-          throw _mapStatusToError(verifyResponse);
+          throw _mapResponse(verifyResponse);
         }
 
         return PasskeyInfo.fromJson(
@@ -114,7 +113,7 @@ final class Passkey {
   }) {
     return TaskEither.tryCatch(
       () async {
-        _client.internalStateController.add(const AuthLoading());
+        _ctx.emitState(const AuthLoading());
 
         // 1. Check device support
         if (!await authenticator.isAvailable()) {
@@ -122,7 +121,7 @@ final class Passkey {
         }
 
         // 2. Get authentication options from server
-        final optionsResponse = await _dio.post<dynamic>(
+        final optionsResponse = await _ctx.dio.post<dynamic>(
           '/api/auth/passkey/generate-authentication-options',
           data: <String, dynamic>{
             if (email != null) 'email': email,
@@ -130,7 +129,7 @@ final class Passkey {
         );
 
         if (optionsResponse.statusCode != 200) {
-          throw _mapStatusToError(optionsResponse);
+          throw _mapResponse(optionsResponse);
         }
 
         final options = AuthenticationOptions.fromJson(
@@ -141,13 +140,13 @@ final class Passkey {
         final assertion = await authenticator.getAssertion(options);
 
         // 4. Send to server for verification
-        final verifyResponse = await _dio.post<dynamic>(
+        final verifyResponse = await _ctx.dio.post<dynamic>(
           '/api/auth/passkey/verify-authentication',
           data: assertion.toJson(),
         );
 
         if (verifyResponse.statusCode != 200) {
-          throw _mapStatusToError(verifyResponse);
+          throw _mapResponse(verifyResponse);
         }
 
         final data = verifyResponse.data as Map<String, dynamic>;
@@ -156,16 +155,16 @@ final class Passkey {
           data['session'] as Map<String, dynamic>,
         );
 
-        await _client.internalStorage.saveUser(user).run();
-        await _client.internalStorage.saveSession(session).run();
+        await _ctx.storage.saveUser(user).run();
+        await _ctx.storage.saveSession(session).run();
 
         final state = Authenticated(user: user, session: session);
-        _client.internalStateController.add(state);
+        _ctx.emitState(state);
 
         return state;
       },
       (error, stackTrace) {
-        _client.internalStateController.add(const Unauthenticated());
+        _ctx.emitState(const Unauthenticated());
         return _mapError(error, stackTrace);
       },
     );
@@ -177,10 +176,10 @@ final class Passkey {
   TaskEither<AuthError, List<PasskeyInfo>> list() {
     return TaskEither.tryCatch(
       () async {
-        final response = await _dio.get<dynamic>('/api/auth/passkey/list');
+        final response = await _ctx.dio.get<dynamic>('/api/auth/passkey/list');
 
         if (response.statusCode != 200) {
-          throw _mapStatusToError(response);
+          throw _mapResponse(response);
         }
 
         final data = response.data as Map<String, dynamic>;
@@ -202,12 +201,12 @@ final class Passkey {
   TaskEither<AuthError, Unit> remove({required String passkeyId}) {
     return TaskEither.tryCatch(
       () async {
-        final response = await _dio.delete<dynamic>(
+        final response = await _ctx.dio.delete<dynamic>(
           '/api/auth/passkey/$passkeyId',
         );
 
         if (response.statusCode != 200) {
-          throw _mapStatusToError(response);
+          throw _mapResponse(response);
         }
 
         return unit;
@@ -218,51 +217,34 @@ final class Passkey {
 
   // === Error Handling ===
 
-  AuthError _mapStatusToError(Response<dynamic> response) {
-    final data = response.data;
-    final statusCode = response.statusCode;
-
-    String? code;
-    String? message;
-
-    if (data is Map<String, dynamic>) {
-      code = data['code'] as String?;
-      message = data['message'] as String?;
-    }
-
-    return switch (code) {
-      'PASSKEY_NOT_FOUND' => const PasskeyNotFound(),
-      'VERIFICATION_FAILED' || 'INVALID_CHALLENGE' =>
-        const PasskeyVerificationFailed(),
-      _ when statusCode == 404 => const PasskeyNotFound(),
-      _ => UnknownError(message: message ?? 'Request failed', code: code),
-    };
+  /// Map response to passkey-specific errors, falling back to standard mapping.
+  AuthError _mapResponse(Response<dynamic> response) {
+    return ErrorMapper.mapResponse(
+      response,
+      onCode: (code, message) => switch (code) {
+        'PASSKEY_NOT_FOUND' => const PasskeyNotFound(),
+        'VERIFICATION_FAILED' || 'INVALID_CHALLENGE' =>
+          const PasskeyVerificationFailed(),
+        _ => null, // Fall back to standard mapping
+      },
+    );
   }
 
+  /// Map any error to AuthError, with passkey-specific handling.
   AuthError _mapError(Object error, StackTrace stackTrace) {
-    if (error is AuthError) return error;
-
-    if (error is DioException) {
-      if (error.response != null) {
-        return _mapStatusToError(error.response!);
+    // Handle passkey-specific: platform authenticator errors
+    if (error is! AuthError && error is! DioException) {
+      final errorString = error.toString().toLowerCase();
+      if (errorString.contains('cancel')) {
+        return const PasskeyCancelled();
       }
-
-      if (error.type == DioExceptionType.connectionError ||
-          error.type == DioExceptionType.connectionTimeout) {
-        return const NetworkError();
+      if (errorString.contains('not supported') ||
+          errorString.contains('not available')) {
+        return const PasskeyNotSupported();
       }
     }
 
-    // Platform authenticator errors - detect cancellation
-    final errorString = error.toString().toLowerCase();
-    if (errorString.contains('cancel')) {
-      return const PasskeyCancelled();
-    }
-    if (errorString.contains('not supported') ||
-        errorString.contains('not available')) {
-      return const PasskeyNotSupported();
-    }
-
-    return UnknownError(message: error.toString());
+    // Delegate to shared mapper
+    return ErrorMapper.map(error, stackTrace);
   }
 }

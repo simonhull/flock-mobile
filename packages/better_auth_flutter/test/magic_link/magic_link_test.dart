@@ -1,59 +1,27 @@
 import 'package:better_auth_flutter/better_auth_flutter.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http_mock_adapter/http_mock_adapter.dart';
+
+import '../helpers/auth_test_harness.dart';
 
 void main() {
-  late Dio dio;
-  late DioAdapter dioAdapter;
-  late BetterAuthClientImpl client;
-  late MemoryStorageImpl storage;
+  final harness = AuthTestHarness();
   late MagicLink magicLink;
 
-  final mockAuthResponse = {
-    'user': {
-      'id': 'user-123',
-      'email': 'test@example.com',
-      'name': 'Test User',
-      'emailVerified': true,
-      'createdAt': '2024-01-01T00:00:00.000Z',
-      'updatedAt': '2024-01-01T00:00:00.000Z',
-    },
-    'session': {
-      'id': 'session-123',
-      'token': 'token-abc',
-      'userId': 'user-123',
-      'expiresAt':
-          DateTime.now().add(const Duration(days: 7)).toIso8601String(),
-      'createdAt': '2024-01-01T00:00:00.000Z',
-      'updatedAt': '2024-01-01T00:00:00.000Z',
-    },
-  };
-
   setUp(() {
-    dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'));
-    dioAdapter = DioAdapter(dio: dio);
-    storage = MemoryStorageImpl();
-    client = BetterAuthClientImpl(
-      baseUrl: 'https://api.example.com',
-      storage: storage,
-      dio: dio,
-    );
-    magicLink = MagicLink(client);
+    harness.setUp();
+    magicLink = MagicLink(harness.pluginContext);
   });
 
-  tearDown(() async {
-    await client.dispose();
-  });
+  tearDown(harness.tearDown);
 
   group('MagicLink.send', () {
     test('sends magic link and returns expiry info', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/magic-link/send',
-        (server) => server.reply(200, {
-          'email': 'user@example.com',
-          'expiresAt': '2024-01-15T12:30:00.000Z',
-        }),
+        AuthFixtures.magicLinkSent(
+          email: 'user@example.com',
+          expiresAt: DateTime.utc(2024, 1, 15, 12, 30),
+        ),
         data: {'email': 'user@example.com', 'createUser': true},
       );
 
@@ -70,12 +38,9 @@ void main() {
     });
 
     test('sends with createUser false', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/magic-link/send',
-        (server) => server.reply(200, {
-          'email': 'user@example.com',
-          'expiresAt': '2024-01-15T12:30:00.000Z',
-        }),
+        AuthFixtures.magicLinkSent(email: 'user@example.com'),
         data: {'email': 'user@example.com', 'createUser': false},
       );
 
@@ -87,12 +52,9 @@ void main() {
     });
 
     test('sends with custom callbackURL', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/magic-link/send',
-        (server) => server.reply(200, {
-          'email': 'user@example.com',
-          'expiresAt': '2024-01-15T12:30:00.000Z',
-        }),
+        AuthFixtures.magicLinkSent(email: 'user@example.com'),
         data: {
           'email': 'user@example.com',
           'createUser': true,
@@ -108,12 +70,10 @@ void main() {
     });
 
     test('returns error when user not found and createUser false', () async {
-      dioAdapter.onPost(
+      harness.onPost(
         '/api/auth/magic-link/send',
-        (server) => server.reply(404, {
-          'message': 'User not found',
-          'code': 'USER_NOT_FOUND',
-        }),
+        AuthFixtures.error(message: 'User not found', code: 'USER_NOT_FOUND'),
+        statusCode: 404,
         data: {'email': 'unknown@example.com', 'createUser': false},
       );
 
@@ -127,9 +87,9 @@ void main() {
 
   group('MagicLink.verify', () {
     test('verifies token and returns Authenticated', () async {
-      dioAdapter.onGet(
+      harness.onGet(
         '/api/auth/magic-link/verify',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         queryParameters: {'token': 'valid-token-123'},
       );
 
@@ -146,46 +106,41 @@ void main() {
     });
 
     test('persists user and session on success', () async {
-      dioAdapter.onGet(
+      harness.onGet(
         '/api/auth/magic-link/verify',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         queryParameters: {'token': 'valid-token-123'},
       );
 
       await magicLink.verify(token: 'valid-token-123').run();
 
-      final userResult = await storage.getUser().run();
-      final sessionResult = await storage.getSession().run();
+      final userResult = await harness.storage.getUser().run();
+      final sessionResult = await harness.storage.getSession().run();
 
       expect(userResult.isRight(), true);
       expect(sessionResult.isRight(), true);
     });
 
     test('emits AuthLoading then Authenticated', () async {
-      dioAdapter.onGet(
+      harness.onGet(
         '/api/auth/magic-link/verify',
-        (server) => server.reply(200, mockAuthResponse),
+        AuthFixtures.authResponse(),
         queryParameters: {'token': 'valid-token-123'},
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await magicLink.verify(token: 'valid-token-123').run();
-
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => magicLink.verify(token: 'valid-token-123').run(),
+      );
 
       expect(states, contains(isA<AuthLoading>()));
       expect(states, contains(isA<Authenticated>()));
     });
 
     test('returns MagicLinkExpired on expired token', () async {
-      dioAdapter.onGet(
+      harness.onGet(
         '/api/auth/magic-link/verify',
-        (server) => server.reply(400, {
-          'message': 'Token expired',
-          'code': 'MAGIC_LINK_EXPIRED',
-        }),
+        AuthFixtures.error(message: 'Token expired', code: 'MAGIC_LINK_EXPIRED'),
+        statusCode: 400,
         queryParameters: {'token': 'expired-token'},
       );
 
@@ -199,12 +154,10 @@ void main() {
     });
 
     test('returns MagicLinkInvalid on invalid token', () async {
-      dioAdapter.onGet(
+      harness.onGet(
         '/api/auth/magic-link/verify',
-        (server) => server.reply(400, {
-          'message': 'Invalid token',
-          'code': 'INVALID_TOKEN',
-        }),
+        AuthFixtures.error(message: 'Invalid token', code: 'INVALID_TOKEN'),
+        statusCode: 400,
         queryParameters: {'token': 'invalid-token'},
       );
 
@@ -218,12 +171,10 @@ void main() {
     });
 
     test('returns MagicLinkAlreadyUsed on used token', () async {
-      dioAdapter.onGet(
+      harness.onGet(
         '/api/auth/magic-link/verify',
-        (server) => server.reply(400, {
-          'message': 'Token already used',
-          'code': 'MAGIC_LINK_USED',
-        }),
+        AuthFixtures.error(message: 'Token already used', code: 'MAGIC_LINK_USED'),
+        statusCode: 400,
         queryParameters: {'token': 'used-token'},
       );
 
@@ -237,21 +188,16 @@ void main() {
     });
 
     test('emits Unauthenticated on failure', () async {
-      dioAdapter.onGet(
+      harness.onGet(
         '/api/auth/magic-link/verify',
-        (server) => server.reply(400, {
-          'message': 'Invalid token',
-          'code': 'INVALID_TOKEN',
-        }),
+        AuthFixtures.error(message: 'Invalid token', code: 'INVALID_TOKEN'),
+        statusCode: 400,
         queryParameters: {'token': 'invalid-token'},
       );
 
-      final states = <AuthState>[];
-      client.authStateChanges.listen(states.add);
-
-      await magicLink.verify(token: 'invalid-token').run();
-
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final states = await harness.collectStates(
+        () => magicLink.verify(token: 'invalid-token').run(),
+      );
 
       expect(states, contains(isA<Unauthenticated>()));
     });

@@ -23,5 +23,5 @@ extension PasskeyExtension on BetterAuthClientImpl {
   static final _instances = Expando<Passkey>('Passkey');
 
   /// Passkey (WebAuthn) authentication capability.
-  Passkey get passkey => _instances[this] ??= Passkey(this);
+  Passkey get passkey => _instances[this] ??= Passkey(pluginContext);
 }

@@ -15,5 +15,5 @@ extension MagicLinkExtension on BetterAuthClientImpl {
   static final _instances = Expando<MagicLink>('MagicLink');
 
   /// Magic link (passwordless) authentication capability.
-  MagicLink get magicLink => _instances[this] ??= MagicLink(this);
+  MagicLink get magicLink => _instances[this] ??= MagicLink(pluginContext);
 }

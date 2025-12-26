@@ -90,6 +90,8 @@ export 'src/anonymous/anonymous_user_extension.dart';
 // Client
 export 'src/client/better_auth_client.dart';
 export 'src/client/better_auth_client_impl.dart';
+export 'src/client/error_mapper.dart';
+export 'src/client/plugin_context.dart';
 export 'src/client/session_validation_extension.dart';
 export 'src/client/social_auth_extension.dart';
 

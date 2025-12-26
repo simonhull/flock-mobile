@@ -18,5 +18,5 @@ extension AnonymousExtension on BetterAuthClientImpl {
   static final _instances = Expando<Anonymous>('Anonymous');
 
   /// Anonymous (guest) authentication capability.
-  Anonymous get anonymous => _instances[this] ??= Anonymous(this);
+  Anonymous get anonymous => _instances[this] ??= Anonymous(pluginContext);
 }

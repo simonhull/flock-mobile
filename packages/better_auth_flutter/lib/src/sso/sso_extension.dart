@@ -25,5 +25,5 @@ extension SSOExtension on BetterAuthClientImpl {
   ///   showPasswordLogin();
   /// }
   /// ```
-  SSO get sso => _instances[this] ??= SSO(this);
+  SSO get sso => _instances[this] ??= SSO(pluginContext);
 }
