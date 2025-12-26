@@ -73,6 +73,34 @@ final class TwoFactorRequired extends AuthError {
       : super(message: 'Two-factor authentication required');
 }
 
+// === Magic Link Errors ===
+
+/// Magic link has expired.
+///
+/// The user clicked a link that is no longer valid.
+/// They should request a new magic link.
+final class MagicLinkExpired extends AuthError {
+  const MagicLinkExpired()
+      : super(message: 'Magic link has expired', code: 'MAGIC_LINK_EXPIRED');
+}
+
+/// Magic link token is invalid.
+///
+/// The token may be malformed or tampered with.
+final class MagicLinkInvalid extends AuthError {
+  const MagicLinkInvalid()
+      : super(message: 'Invalid magic link', code: 'MAGIC_LINK_INVALID');
+}
+
+/// Magic link has already been used.
+///
+/// Magic links are single-use for security. The user should
+/// request a new one if they need to sign in again.
+final class MagicLinkAlreadyUsed extends AuthError {
+  const MagicLinkAlreadyUsed()
+      : super(message: 'Magic link has already been used', code: 'MAGIC_LINK_USED');
+}
+
 // === OAuth Errors ===
 
 /// User cancelled the OAuth flow.

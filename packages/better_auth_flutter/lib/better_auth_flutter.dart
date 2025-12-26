@@ -91,9 +91,14 @@ export 'src/client/social_auth_extension.dart';
 // Connectivity
 export 'src/connectivity/connectivity_monitor.dart';
 
+// Magic Link
+export 'src/magic_link/magic_link.dart';
+export 'src/magic_link/magic_link_extension.dart';
+
 // Models
 export 'src/models/auth_error.dart';
 export 'src/models/auth_state.dart';
+export 'src/models/magic_link_sent.dart';
 export 'src/models/session.dart';
 export 'src/models/two_factor_setup.dart';
 export 'src/models/user.dart';

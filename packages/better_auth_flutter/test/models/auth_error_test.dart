@@ -56,6 +56,24 @@ void main() {
       expect(error.code, isNull);
     });
 
+    test('MagicLinkExpired has fixed message and code', () {
+      const error = MagicLinkExpired();
+      expect(error.message, 'Magic link has expired');
+      expect(error.code, 'MAGIC_LINK_EXPIRED');
+    });
+
+    test('MagicLinkInvalid has fixed message and code', () {
+      const error = MagicLinkInvalid();
+      expect(error.message, 'Invalid magic link');
+      expect(error.code, 'MAGIC_LINK_INVALID');
+    });
+
+    test('MagicLinkAlreadyUsed has fixed message and code', () {
+      const error = MagicLinkAlreadyUsed();
+      expect(error.message, 'Magic link has already been used');
+      expect(error.code, 'MAGIC_LINK_USED');
+    });
+
     test('exhaustive switch on AuthError', () {
       String getErrorType(AuthError error) => switch (error) {
             NetworkError() => 'network',
@@ -73,6 +91,10 @@ void main() {
             OAuthTokenRejected() => 'oauth_rejected',
             // Two-factor errors
             TwoFactorRequired() => 'two_factor_required',
+            // Magic link errors
+            MagicLinkExpired() => 'magic_link_expired',
+            MagicLinkInvalid() => 'magic_link_invalid',
+            MagicLinkAlreadyUsed() => 'magic_link_used',
           };
 
       expect(getErrorType(const NetworkError()), 'network');
@@ -88,6 +110,9 @@ void main() {
       );
       expect(getErrorType(const OAuthCancelled()), 'oauth_cancelled');
       expect(getErrorType(const TwoFactorRequired()), 'two_factor_required');
+      expect(getErrorType(const MagicLinkExpired()), 'magic_link_expired');
+      expect(getErrorType(const MagicLinkInvalid()), 'magic_link_invalid');
+      expect(getErrorType(const MagicLinkAlreadyUsed()), 'magic_link_used');
     });
 
     test('toString includes code and message', () {
