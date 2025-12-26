@@ -1,0 +1,268 @@
+import 'package:better_auth_flutter/src/client/better_auth_client_impl.dart';
+import 'package:better_auth_flutter/src/models/auth_error.dart';
+import 'package:better_auth_flutter/src/models/auth_state.dart';
+import 'package:better_auth_flutter/src/models/session.dart';
+import 'package:better_auth_flutter/src/models/user.dart';
+import 'package:better_auth_flutter/src/passkey/passkey_authenticator.dart';
+import 'package:better_auth_flutter/src/passkey/passkey_models.dart';
+import 'package:dio/dio.dart';
+import 'package:fpdart/fpdart.dart';
+
+/// Passkey (WebAuthn) authentication capability.
+///
+/// Enables passwordless authentication using biometrics (Face ID, Touch ID,
+/// fingerprint) or device PIN via the WebAuthn/FIDO2 standard.
+///
+/// Usage:
+/// ```dart
+/// final authenticator = MyPasskeyAuthenticator();
+///
+/// // Register a new passkey (user must be signed in)
+/// await client.passkey.register(authenticator: authenticator).run();
+///
+/// // Authenticate with passkey
+/// await client.passkey.authenticate(authenticator: authenticator).run();
+///
+/// // List registered passkeys
+/// await client.passkey.list().run();
+///
+/// // Remove a passkey
+/// await client.passkey.remove(passkeyId: 'pk-123').run();
+/// ```
+final class Passkey {
+  Passkey(this._client);
+
+  final BetterAuthClientImpl _client;
+
+  Dio get _dio => _client.internalDio;
+
+  /// Register a new passkey for the current user.
+  ///
+  /// User must be authenticated. Creates a new credential on device
+  /// and stores the public key on the server.
+  ///
+  /// [authenticator] - Platform-specific WebAuthn implementation.
+  /// [name] - Optional friendly name for the passkey (e.g., "iPhone 15 Pro").
+  ///
+  /// Returns [PasskeyInfo] on success.
+  /// Throws [PasskeyNotSupported] if device doesn't support passkeys.
+  /// Throws [PasskeyCancelled] if user cancels the biometric prompt.
+  /// Throws [PasskeyVerificationFailed] if server rejects the credential.
+  TaskEither<AuthError, PasskeyInfo> register({
+    required PasskeyAuthenticator authenticator,
+    String? name,
+  }) {
+    return TaskEither.tryCatch(
+      () async {
+        // 1. Check device support
+        if (!await authenticator.isAvailable()) {
+          throw const PasskeyNotSupported();
+        }
+
+        // 2. Get registration options from server
+        final optionsResponse = await _dio.post<dynamic>(
+          '/api/auth/passkey/generate-registration-options',
+        );
+
+        if (optionsResponse.statusCode != 200) {
+          throw _mapStatusToError(optionsResponse);
+        }
+
+        final options = RegistrationOptions.fromJson(
+          optionsResponse.data as Map<String, dynamic>,
+        );
+
+        // 3. Create credential with platform authenticator
+        final credential = await authenticator.createCredential(options);
+
+        // 4. Send to server for verification
+        final verifyResponse = await _dio.post<dynamic>(
+          '/api/auth/passkey/verify-registration',
+          data: {
+            ...credential.toJson(),
+            if (name != null) 'name': name,
+          },
+        );
+
+        if (verifyResponse.statusCode != 200) {
+          throw _mapStatusToError(verifyResponse);
+        }
+
+        return PasskeyInfo.fromJson(
+          verifyResponse.data as Map<String, dynamic>,
+        );
+      },
+      _mapError,
+    );
+  }
+
+  /// Authenticate with a passkey.
+  ///
+  /// Can be used for initial sign-in or re-authentication.
+  ///
+  /// [authenticator] - Platform-specific WebAuthn implementation.
+  /// [email] - Optional email to filter credentials. If provided, only
+  ///   credentials for that user are allowed.
+  ///
+  /// Returns [Authenticated] on success.
+  /// Throws [PasskeyNotSupported] if device doesn't support passkeys.
+  /// Throws [PasskeyCancelled] if user cancels the biometric prompt.
+  /// Throws [PasskeyNotFound] if no passkey exists for the account.
+  TaskEither<AuthError, Authenticated> authenticate({
+    required PasskeyAuthenticator authenticator,
+    String? email,
+  }) {
+    return TaskEither.tryCatch(
+      () async {
+        _client.internalStateController.add(const AuthLoading());
+
+        // 1. Check device support
+        if (!await authenticator.isAvailable()) {
+          throw const PasskeyNotSupported();
+        }
+
+        // 2. Get authentication options from server
+        final optionsResponse = await _dio.post<dynamic>(
+          '/api/auth/passkey/generate-authentication-options',
+          data: <String, dynamic>{
+            if (email != null) 'email': email,
+          },
+        );
+
+        if (optionsResponse.statusCode != 200) {
+          throw _mapStatusToError(optionsResponse);
+        }
+
+        final options = AuthenticationOptions.fromJson(
+          optionsResponse.data as Map<String, dynamic>,
+        );
+
+        // 3. Get assertion from platform authenticator
+        final assertion = await authenticator.getAssertion(options);
+
+        // 4. Send to server for verification
+        final verifyResponse = await _dio.post<dynamic>(
+          '/api/auth/passkey/verify-authentication',
+          data: assertion.toJson(),
+        );
+
+        if (verifyResponse.statusCode != 200) {
+          throw _mapStatusToError(verifyResponse);
+        }
+
+        final data = verifyResponse.data as Map<String, dynamic>;
+        final user = User.fromJson(data['user'] as Map<String, dynamic>);
+        final session = Session.fromJson(
+          data['session'] as Map<String, dynamic>,
+        );
+
+        await _client.internalStorage.saveUser(user).run();
+        await _client.internalStorage.saveSession(session).run();
+
+        final state = Authenticated(user: user, session: session);
+        _client.internalStateController.add(state);
+
+        return state;
+      },
+      (error, stackTrace) {
+        _client.internalStateController.add(const Unauthenticated());
+        return _mapError(error, stackTrace);
+      },
+    );
+  }
+
+  /// List all passkeys for current user.
+  ///
+  /// Returns a list of [PasskeyInfo] containing registered passkeys.
+  TaskEither<AuthError, List<PasskeyInfo>> list() {
+    return TaskEither.tryCatch(
+      () async {
+        final response = await _dio.get<dynamic>('/api/auth/passkey/list');
+
+        if (response.statusCode != 200) {
+          throw _mapStatusToError(response);
+        }
+
+        final data = response.data as Map<String, dynamic>;
+        final passkeys = (data['passkeys'] as List<dynamic>)
+            .map((p) => PasskeyInfo.fromJson(p as Map<String, dynamic>))
+            .toList();
+
+        return passkeys;
+      },
+      _mapError,
+    );
+  }
+
+  /// Remove a passkey.
+  ///
+  /// [passkeyId] - The ID of the passkey to remove.
+  ///
+  /// Throws [PasskeyNotFound] if the passkey doesn't exist.
+  TaskEither<AuthError, Unit> remove({required String passkeyId}) {
+    return TaskEither.tryCatch(
+      () async {
+        final response = await _dio.delete<dynamic>(
+          '/api/auth/passkey/$passkeyId',
+        );
+
+        if (response.statusCode != 200) {
+          throw _mapStatusToError(response);
+        }
+
+        return unit;
+      },
+      _mapError,
+    );
+  }
+
+  // === Error Handling ===
+
+  AuthError _mapStatusToError(Response<dynamic> response) {
+    final data = response.data;
+    final statusCode = response.statusCode;
+
+    String? code;
+    String? message;
+
+    if (data is Map<String, dynamic>) {
+      code = data['code'] as String?;
+      message = data['message'] as String?;
+    }
+
+    return switch (code) {
+      'PASSKEY_NOT_FOUND' => const PasskeyNotFound(),
+      'VERIFICATION_FAILED' || 'INVALID_CHALLENGE' =>
+        const PasskeyVerificationFailed(),
+      _ when statusCode == 404 => const PasskeyNotFound(),
+      _ => UnknownError(message: message ?? 'Request failed', code: code),
+    };
+  }
+
+  AuthError _mapError(Object error, StackTrace stackTrace) {
+    if (error is AuthError) return error;
+
+    if (error is DioException) {
+      if (error.response != null) {
+        return _mapStatusToError(error.response!);
+      }
+
+      if (error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout) {
+        return const NetworkError();
+      }
+    }
+
+    // Platform authenticator errors - detect cancellation
+    final errorString = error.toString().toLowerCase();
+    if (errorString.contains('cancel')) {
+      return const PasskeyCancelled();
+    }
+    if (errorString.contains('not supported') ||
+        errorString.contains('not available')) {
+      return const PasskeyNotSupported();
+    }
+
+    return UnknownError(message: error.toString());
+  }
+}

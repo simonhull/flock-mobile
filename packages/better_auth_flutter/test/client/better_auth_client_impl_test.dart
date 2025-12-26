@@ -218,7 +218,7 @@ void main() {
         }
       });
 
-      test('returns TwoFactorRequired when twoFactorRedirect is true', () async {
+      test('returns TwoFactorRequired on twoFactorRedirect', () async {
         when(
           () => mockDio.post<dynamic>(
             any(),

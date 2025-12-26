@@ -74,6 +74,19 @@ void main() {
       expect(error.code, 'MAGIC_LINK_USED');
     });
 
+    // Anonymous auth errors
+    test('NotAnonymous has fixed message and code', () {
+      const error = NotAnonymous();
+      expect(error.message, 'Current user is not anonymous');
+      expect(error.code, 'NOT_ANONYMOUS');
+    });
+
+    test('AccountAlreadyLinked has fixed message and code', () {
+      const error = AccountAlreadyLinked();
+      expect(error.message, 'Account is already linked to credentials');
+      expect(error.code, 'ACCOUNT_ALREADY_LINKED');
+    });
+
     test('exhaustive switch on AuthError', () {
       String getErrorType(AuthError error) => switch (error) {
             NetworkError() => 'network',
@@ -95,6 +108,20 @@ void main() {
             MagicLinkExpired() => 'magic_link_expired',
             MagicLinkInvalid() => 'magic_link_invalid',
             MagicLinkAlreadyUsed() => 'magic_link_used',
+            // Anonymous auth errors
+            NotAnonymous() => 'not_anonymous',
+            AccountAlreadyLinked() => 'account_already_linked',
+            // Passkey errors
+            PasskeyNotSupported() => 'passkey_not_supported',
+            PasskeyCancelled() => 'passkey_cancelled',
+            PasskeyNotFound() => 'passkey_not_found',
+            PasskeyVerificationFailed() => 'passkey_verification_failed',
+            // SSO errors
+            SSOProviderNotFound() => 'sso_provider_not_found',
+            SSOProviderDisabled() => 'sso_provider_disabled',
+            SSOCallbackError() => 'sso_callback_error',
+            SSOStateMismatch() => 'sso_state_mismatch',
+            SSOCancelled() => 'sso_cancelled',
           };
 
       expect(getErrorType(const NetworkError()), 'network');
@@ -113,6 +140,11 @@ void main() {
       expect(getErrorType(const MagicLinkExpired()), 'magic_link_expired');
       expect(getErrorType(const MagicLinkInvalid()), 'magic_link_invalid');
       expect(getErrorType(const MagicLinkAlreadyUsed()), 'magic_link_used');
+      expect(getErrorType(const NotAnonymous()), 'not_anonymous');
+      expect(
+        getErrorType(const AccountAlreadyLinked()),
+        'account_already_linked',
+      );
     });
 
     test('toString includes code and message', () {

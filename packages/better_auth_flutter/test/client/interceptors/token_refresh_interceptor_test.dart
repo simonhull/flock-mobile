@@ -130,17 +130,16 @@ void main() {
             )
             .run();
 
-        // Protected endpoint returns 401
-        dioAdapter.onGet(
-          '/api/protected',
-          (server) => server.reply(401, {'message': 'Token expired'}),
-        );
-
-        // Refresh attempt also fails
-        dioAdapter.onGet(
-          '/api/auth/get-session',
-          (server) => server.reply(401, {'message': 'Session invalid'}),
-        );
+        // Protected endpoint returns 401, refresh also fails
+        dioAdapter
+          ..onGet(
+            '/api/protected',
+            (server) => server.reply(401, {'message': 'Token expired'}),
+          )
+          ..onGet(
+            '/api/auth/get-session',
+            (server) => server.reply(401, {'message': 'Session invalid'}),
+          );
 
         try {
           await dio.get<dynamic>('/api/protected');
@@ -177,18 +176,21 @@ void main() {
             )
             .run();
 
-        dioAdapter.onGet(
-          '/api/protected',
-          (server) => server.reply(401, {'message': 'Token expired'}),
-        );
-        dioAdapter.onGet(
-          '/api/auth/get-session',
-          (server) => server.reply(401, {'message': 'Session invalid'}),
-        );
+        dioAdapter
+          ..onGet(
+            '/api/protected',
+            (server) => server.reply(401, {'message': 'Token expired'}),
+          )
+          ..onGet(
+            '/api/auth/get-session',
+            (server) => server.reply(401, {'message': 'Session invalid'}),
+          );
 
         try {
           await dio.get<dynamic>('/api/protected');
-        } catch (_) {}
+        } on DioException {
+          // Expected
+        }
 
         final sessionResult = await storage.getSession().run();
         sessionResult.fold(

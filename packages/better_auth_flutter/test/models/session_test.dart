@@ -146,8 +146,8 @@ void main() {
           expiresAt: DateTime.now().add(const Duration(minutes: 15)),
         );
 
-        // With 5 minute threshold, not expiring soon
-        expect(session.isExpiringSoon(const Duration(minutes: 5)), false);
+        // With default 5 minute threshold, not expiring soon
+        expect(session.isExpiringSoon(), false);
 
         // With 20 minute threshold, expiring soon
         expect(session.isExpiringSoon(const Duration(minutes: 20)), true);

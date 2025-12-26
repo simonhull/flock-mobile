@@ -99,7 +99,7 @@ final class TokenRefreshInterceptor extends Interceptor {
 
       _refreshCompleter!.complete(false);
       return false;
-    } catch (e) {
+    } on Object {
       _refreshCompleter!.complete(false);
       return false;
     } finally {

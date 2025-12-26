@@ -82,6 +82,11 @@
 /// the nonce in the credential for security.
 library;
 
+// Anonymous
+export 'src/anonymous/anonymous.dart';
+export 'src/anonymous/anonymous_extension.dart';
+export 'src/anonymous/anonymous_user_extension.dart';
+
 // Client
 export 'src/client/better_auth_client.dart';
 export 'src/client/better_auth_client_impl.dart';
@@ -103,6 +108,12 @@ export 'src/models/session.dart';
 export 'src/models/two_factor_setup.dart';
 export 'src/models/user.dart';
 
+// Passkey
+export 'src/passkey/passkey.dart';
+export 'src/passkey/passkey_authenticator.dart';
+export 'src/passkey/passkey_extension.dart';
+export 'src/passkey/passkey_models.dart';
+
 // Queue
 export 'src/queue/offline_queue.dart';
 export 'src/queue/queued_operation.dart';
@@ -110,6 +121,12 @@ export 'src/queue/queued_operation.dart';
 // Social
 export 'src/social/oauth_credential.dart';
 export 'src/social/oauth_provider.dart';
+
+// SSO
+export 'src/sso/sso.dart';
+export 'src/sso/sso_browser_handler.dart';
+export 'src/sso/sso_extension.dart';
+export 'src/sso/sso_models.dart';
 
 // Storage
 export 'src/storage/auth_storage.dart';

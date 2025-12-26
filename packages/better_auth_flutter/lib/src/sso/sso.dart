@@ -1,0 +1,238 @@
+import 'package:better_auth_flutter/src/client/better_auth_client_impl.dart';
+import 'package:better_auth_flutter/src/models/auth_error.dart';
+import 'package:better_auth_flutter/src/models/auth_state.dart';
+import 'package:better_auth_flutter/src/models/session.dart';
+import 'package:better_auth_flutter/src/models/user.dart';
+import 'package:better_auth_flutter/src/sso/sso_browser_handler.dart';
+import 'package:better_auth_flutter/src/sso/sso_models.dart';
+import 'package:dio/dio.dart';
+import 'package:fpdart/fpdart.dart';
+
+/// Enterprise SSO (OIDC/SAML/OAuth2) authentication capability.
+///
+/// Enables authentication through corporate identity providers like
+/// Okta, Azure AD, Google Workspace, and custom SAML/OIDC providers.
+///
+/// Usage:
+/// ```dart
+/// final browserHandler = FlutterWebAuthHandler();
+///
+/// // Check if SSO is available for email domain
+/// final provider = await client.sso.checkDomain(
+///   email: 'user@company.com',
+/// ).run();
+///
+/// if (provider != null) {
+///   // Sign in with SSO
+///   await client.sso.signIn(
+///     email: 'user@company.com',
+///     browserHandler: browserHandler,
+///   ).run();
+/// }
+/// ```
+final class SSO {
+  SSO(this._client);
+
+  final BetterAuthClientImpl _client;
+
+  Dio get _dio => _client.internalDio;
+
+  /// Sign in with SSO.
+  ///
+  /// Provide either [email] for domain-based provider lookup or [providerId]
+  /// for explicit provider selection.
+  ///
+  /// The [browserHandler] is called to open the IdP login page and capture
+  /// the callback URL after authentication.
+  ///
+  /// Returns [Authenticated] on success.
+  /// Throws [SSOProviderNotFound] if no provider is configured for the domain.
+  /// Throws [SSOProviderDisabled] if the provider is disabled.
+  /// Throws [SSOStateMismatch] if state validation fails (CSRF protection).
+  /// Throws [SSOCancelled] if the user cancels the flow.
+  TaskEither<AuthError, Authenticated> signIn({
+    required SSOBrowserHandler browserHandler,
+    String? email,
+    String? providerId,
+    String? callbackUrl,
+  }) {
+    return TaskEither.tryCatch(
+      () async {
+        if (email == null && providerId == null) {
+          throw const UnknownError(
+            message: 'Either email or providerId is required',
+            code: 'INVALID_PARAMS',
+          );
+        }
+
+        _client.internalStateController.add(const AuthLoading());
+
+        // 1. Get authorization URL from server
+        final initResponse = await _dio.post<dynamic>(
+          '/api/auth/sso/sign-in',
+          data: <String, dynamic>{
+            if (email != null) 'email': email,
+            if (providerId != null) 'providerId': providerId,
+            if (callbackUrl != null) 'callbackURL': callbackUrl,
+          },
+        );
+
+        if (initResponse.statusCode != 200) {
+          throw _mapStatusToError(initResponse);
+        }
+
+        final authResponse = SSOAuthorizationResponse.fromJson(
+          initResponse.data as Map<String, dynamic>,
+        );
+
+        // 2. Open browser and wait for callback
+        final callbackUri = await browserHandler.openAndWaitForCallback(
+          authorizationUrl: authResponse.authorizationUrl,
+          callbackUrl: authResponse.callbackUrl,
+        );
+
+        // 3. Verify state parameter (CSRF protection)
+        final returnedState = callbackUri.queryParameters['state'];
+        if (returnedState != authResponse.state) {
+          throw const SSOStateMismatch();
+        }
+
+        // 4. Handle callback with server
+        final tokenResponse = await _dio.get<dynamic>(
+          '/api/auth/sso/callback/${authResponse.providerId}',
+          queryParameters: callbackUri.queryParameters,
+        );
+
+        if (tokenResponse.statusCode != 200) {
+          throw _mapStatusToError(tokenResponse);
+        }
+
+        // 5. Extract session
+        final data = tokenResponse.data as Map<String, dynamic>;
+        final user = User.fromJson(data['user'] as Map<String, dynamic>);
+        final session = Session.fromJson(
+          data['session'] as Map<String, dynamic>,
+        );
+
+        await _client.internalStorage.saveUser(user).run();
+        await _client.internalStorage.saveSession(session).run();
+
+        final state = Authenticated(user: user, session: session);
+        _client.internalStateController.add(state);
+
+        return state;
+      },
+      (error, stackTrace) {
+        _client.internalStateController.add(const Unauthenticated());
+        return _mapError(error, stackTrace);
+      },
+    );
+  }
+
+  /// Check if SSO is available for an email domain.
+  ///
+  /// Returns the provider info if configured, null otherwise.
+  /// This is useful for determining whether to show SSO options
+  /// during sign-in.
+  TaskEither<AuthError, SSOProvider?> checkDomain({
+    required String email,
+  }) {
+    return TaskEither.tryCatch(
+      () async {
+        final domain = email.split('@').last;
+
+        final response = await _dio.get<dynamic>(
+          '/api/auth/sso/providers',
+          queryParameters: {'domain': domain},
+        );
+
+        if (response.statusCode != 200) {
+          throw _mapStatusToError(response);
+        }
+
+        final data = response.data as Map<String, dynamic>;
+        final providers = data['providers'] as List<dynamic>?;
+
+        if (providers == null || providers.isEmpty) {
+          return null;
+        }
+
+        return SSOProvider.fromJson(
+          providers.first as Map<String, dynamic>,
+        );
+      },
+      _mapError,
+    );
+  }
+
+  /// List all SSO providers.
+  ///
+  /// Returns all configured providers. This may be restricted to
+  /// admin users depending on server configuration.
+  TaskEither<AuthError, List<SSOProvider>> listProviders() {
+    return TaskEither.tryCatch(
+      () async {
+        final response = await _dio.get<dynamic>('/api/auth/sso/providers');
+
+        if (response.statusCode != 200) {
+          throw _mapStatusToError(response);
+        }
+
+        final data = response.data as Map<String, dynamic>;
+        final providers = (data['providers'] as List<dynamic>)
+            .map((p) => SSOProvider.fromJson(p as Map<String, dynamic>))
+            .toList();
+
+        return providers;
+      },
+      _mapError,
+    );
+  }
+
+  // === Error Handling ===
+
+  AuthError _mapStatusToError(Response<dynamic> response) {
+    final data = response.data;
+
+    String? code;
+    String? message;
+
+    if (data is Map<String, dynamic>) {
+      code = data['code'] as String?;
+      message = data['message'] as String?;
+    }
+
+    return switch (code) {
+      'SSO_PROVIDER_NOT_FOUND' => const SSOProviderNotFound(),
+      'SSO_PROVIDER_DISABLED' => const SSOProviderDisabled(),
+      'SSO_STATE_MISMATCH' => const SSOStateMismatch(),
+      'SSO_CALLBACK_ERROR' => SSOCallbackError(
+        message: message ?? 'Callback error',
+      ),
+      _ => UnknownError(message: message ?? 'Request failed', code: code),
+    };
+  }
+
+  AuthError _mapError(Object error, StackTrace stackTrace) {
+    if (error is AuthError) return error;
+
+    if (error is DioException) {
+      if (error.response != null) {
+        return _mapStatusToError(error.response!);
+      }
+
+      if (error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout) {
+        return const NetworkError();
+      }
+    }
+
+    // Browser handler errors - detect cancellation
+    final errorString = error.toString().toLowerCase();
+    if (errorString.contains('cancel')) {
+      return const SSOCancelled();
+    }
+
+    return UnknownError(message: error.toString());
+  }
+}
