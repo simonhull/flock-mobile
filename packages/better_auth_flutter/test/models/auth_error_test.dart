@@ -39,6 +39,11 @@ void main() {
       expect(error.message, 'Invalid or expired token');
     });
 
+    test('NotAuthenticated has fixed message', () {
+      const error = NotAuthenticated();
+      expect(error.message, 'Please sign in to continue');
+    });
+
     test('UnknownError accepts custom message and code', () {
       const error = UnknownError(message: 'Something went wrong', code: 'ERR');
       expect(error.message, 'Something went wrong');
@@ -52,8 +57,14 @@ void main() {
             EmailNotVerified() => 'unverified',
             UserAlreadyExists() => 'exists',
             TokenExpired() => 'expired',
+            NotAuthenticated() => 'not_authenticated',
             InvalidToken() => 'invalid_token',
             UnknownError() => 'unknown',
+            // OAuth errors
+            OAuthCancelled() => 'oauth_cancelled',
+            OAuthConfigurationError() => 'oauth_config',
+            OAuthProviderError() => 'oauth_provider',
+            OAuthTokenRejected() => 'oauth_rejected',
           };
 
       expect(getErrorType(const NetworkError()), 'network');
@@ -61,11 +72,13 @@ void main() {
       expect(getErrorType(const EmailNotVerified()), 'unverified');
       expect(getErrorType(const UserAlreadyExists()), 'exists');
       expect(getErrorType(const TokenExpired()), 'expired');
+      expect(getErrorType(const NotAuthenticated()), 'not_authenticated');
       expect(getErrorType(const InvalidToken()), 'invalid_token');
       expect(
         getErrorType(const UnknownError(message: 'test')),
         'unknown',
       );
+      expect(getErrorType(const OAuthCancelled()), 'oauth_cancelled');
     });
 
     test('toString includes code and message', () {

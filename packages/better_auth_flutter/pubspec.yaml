@@ -8,15 +8,20 @@ environment:
   flutter: ^3.38.0
 
 dependencies:
+  connectivity_plus: ^6.1.0
+  cookie_jar: ^4.0.8
   dio: ^5.7.0
+  dio_cookie_manager: ^3.1.1
   flutter:
     sdk: flutter
   flutter_secure_storage: ^10.0.0
   fpdart: ^1.1.0
+  path_provider: ^2.1.5
   rxdart: ^0.28.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  http_mock_adapter: ^0.6.1
   mocktail: ^1.0.4
   very_good_analysis: ^7.0.0

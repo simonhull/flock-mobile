@@ -58,10 +58,14 @@ abstract interface class BetterAuthClient {
 
   // === Email Verification ===
 
-  /// Send verification email to current user.
+  /// Send verification email.
   ///
-  /// Requires an active session.
-  TaskEither<AuthError, Unit> sendVerificationEmail();
+  /// - [email]: Optional email address. If omitted, uses current user's email.
+  /// - [callbackUrl]: Where to redirect after verification.
+  TaskEither<AuthError, Unit> sendVerificationEmail({
+    String? email,
+    String? callbackUrl,
+  });
 
   /// Verify email with token from verification link.
   TaskEither<AuthError, Unit> verifyEmail({required String token});

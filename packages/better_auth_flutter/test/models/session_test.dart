@@ -102,5 +102,56 @@ void main() {
       expect(session1, equals(session2));
       expect(session1, isNot(equals(session3)));
     });
+
+    group('isExpiringSoon', () {
+      test('returns false when session has plenty of time left', () {
+        final session = Session(
+          id: 'session-123',
+          userId: 'user-456',
+          token: 'token-abc',
+          expiresAt: DateTime.now().add(const Duration(hours: 1)),
+        );
+
+        expect(session.isExpiringSoon(), false);
+      });
+
+      test('returns true when session expires within default threshold', () {
+        final session = Session(
+          id: 'session-123',
+          userId: 'user-456',
+          token: 'token-abc',
+          expiresAt: DateTime.now().add(const Duration(minutes: 3)),
+        );
+
+        // Default threshold is 5 minutes
+        expect(session.isExpiringSoon(), true);
+      });
+
+      test('returns true when session is already expired', () {
+        final session = Session(
+          id: 'session-123',
+          userId: 'user-456',
+          token: 'token-abc',
+          expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+        );
+
+        expect(session.isExpiringSoon(), true);
+      });
+
+      test('respects custom threshold', () {
+        final session = Session(
+          id: 'session-123',
+          userId: 'user-456',
+          token: 'token-abc',
+          expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+        );
+
+        // With 5 minute threshold, not expiring soon
+        expect(session.isExpiringSoon(const Duration(minutes: 5)), false);
+
+        // With 20 minute threshold, expiring soon
+        expect(session.isExpiringSoon(const Duration(minutes: 20)), true);
+      });
+    });
   });
 }

@@ -32,6 +32,15 @@ final class Session {
   /// Whether this session is still valid.
   bool get isValid => !isExpired;
 
+  /// Whether this session will expire within the given [threshold].
+  ///
+  /// Useful for proactive refresh before the session actually expires.
+  /// Default threshold is 5 minutes.
+  bool isExpiringSoon([Duration threshold = const Duration(minutes: 5)]) {
+    final refreshPoint = expiresAt.subtract(threshold);
+    return DateTime.now().isAfter(refreshPoint);
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'userId': userId,

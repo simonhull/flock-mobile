@@ -40,6 +40,15 @@ final class TokenExpired extends AuthError {
       : super(message: 'Session expired, please sign in again');
 }
 
+/// User is not authenticated.
+///
+/// This occurs when an operation requires authentication but no
+/// valid session exists.
+final class NotAuthenticated extends AuthError {
+  const NotAuthenticated()
+      : super(message: 'Please sign in to continue');
+}
+
 /// Invalid or expired reset/verification token.
 final class InvalidToken extends AuthError {
   const InvalidToken()
@@ -49,4 +58,56 @@ final class InvalidToken extends AuthError {
 /// Unknown or unmapped error.
 final class UnknownError extends AuthError {
   const UnknownError({required super.message, super.code});
+}
+
+// === OAuth Errors ===
+
+/// User cancelled the OAuth flow.
+///
+/// This is not an error condition - it's expected behavior when
+/// users dismiss the sign-in dialog.
+final class OAuthCancelled extends AuthError {
+  const OAuthCancelled() : super(message: 'Sign in cancelled');
+}
+
+/// OAuth provider is not configured correctly.
+///
+/// This typically indicates a developer error, such as:
+/// - Missing client ID
+/// - Invalid bundle identifier
+/// - Misconfigured redirect URI
+final class OAuthConfigurationError extends AuthError {
+  const OAuthConfigurationError({required this.details})
+      : super(message: 'OAuth configuration error: $details');
+
+  /// Details about the configuration problem.
+  final String details;
+}
+
+/// OAuth provider SDK returned an error.
+///
+/// This wraps errors from the native Google/Apple/etc. SDKs.
+final class OAuthProviderError extends AuthError {
+  const OAuthProviderError({
+    required this.provider,
+    required this.details,
+  }) : super(message: '$provider error: $details');
+
+  /// Which provider failed (e.g., "Google", "Apple").
+  final String provider;
+
+  /// Details about the failure.
+  final String details;
+}
+
+/// Server rejected the OAuth token.
+///
+/// This occurs when the BetterAuth server cannot validate
+/// the token received from the OAuth provider.
+final class OAuthTokenRejected extends AuthError {
+  const OAuthTokenRejected({this.reason})
+      : super(message: reason ?? 'Token rejected by server');
+
+  /// Optional reason for rejection.
+  final String? reason;
 }
