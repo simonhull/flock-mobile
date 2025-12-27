@@ -357,11 +357,42 @@ final class BetterAuthClientImpl implements BetterAuthClient {
           throw const TwoFactorRequired();
         }
 
-        final user = User.fromJson(
-          responseData['user'] as Map<String, dynamic>,
-        );
-        final session = Session.fromJson(
-          responseData['session'] as Map<String, dynamic>,
+        final userData = responseData['user'] as Map<String, dynamic>?;
+
+        // BetterAuth returns token in two places depending on configuration:
+        // 1. Response body: responseData['token'] (default)
+        // 2. Response header: 'set-auth-token' (when bearer plugin is enabled)
+        final token = responseData['token'] as String? ??
+            response.headers.value('set-auth-token');
+
+        // When email verification is required, BetterAuth may return:
+        // - User but no token (most common)
+        // - Minimal response with neither user nor token
+        // In both cases, treat as email verification required.
+        if (token == null) {
+          _stateController.add(const Unauthenticated());
+          throw const EmailNotVerified();
+        }
+
+        // At this point we have a token, so we must have user data too
+        if (userData == null) {
+          _stateController.add(const Unauthenticated());
+          throw const UnknownError(
+            message: 'Invalid response from server',
+            code: 'INVALID_RESPONSE',
+          );
+        }
+
+        final user = User.fromJson(userData);
+
+        // BetterAuth returns token at top level, not a full session object.
+        // Construct session from available data.
+        final session = Session(
+          id: token, // Use token as session ID
+          userId: user.id,
+          token: token,
+          // Default to 30 days (matches server config)
+          expiresAt: DateTime.now().add(const Duration(days: 30)),
         );
 
         await _storage.saveUser(user).run();

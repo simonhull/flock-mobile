@@ -43,6 +43,15 @@ final class RetryInterceptor extends Interceptor {
         // Recursively handle the new error (may retry again)
         await onError(e, handler);
         return;
+      } on Exception catch (e) {
+        // Wrap non-Dio exceptions and handle as connection error
+        final dioError = DioException(
+          requestOptions: err.requestOptions,
+          error: e,
+          type: DioExceptionType.connectionError,
+        );
+        await onError(dioError, handler);
+        return;
       }
     }
 

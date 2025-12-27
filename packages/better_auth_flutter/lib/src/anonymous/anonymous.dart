@@ -66,9 +66,7 @@ final class Anonymous {
         final user = User.fromJson(
           responseData['user'] as Map<String, dynamic>,
         );
-        final session = Session.fromJson(
-          responseData['session'] as Map<String, dynamic>,
-        );
+        final session = _extractSession(responseData, user, response);
 
         await _ctx.storage.saveUser(user).run();
         await _ctx.storage.saveSession(session).run();
@@ -129,9 +127,7 @@ final class Anonymous {
         final user = User.fromJson(
           responseData['user'] as Map<String, dynamic>,
         );
-        final session = Session.fromJson(
-          responseData['session'] as Map<String, dynamic>,
-        );
+        final session = _extractSession(responseData, user, response);
 
         await _ctx.storage.saveUser(user).run();
         await _ctx.storage.saveSession(session).run();
@@ -190,9 +186,7 @@ final class Anonymous {
         final user = User.fromJson(
           responseData['user'] as Map<String, dynamic>,
         );
-        final session = Session.fromJson(
-          responseData['session'] as Map<String, dynamic>,
-        );
+        final session = _extractSession(responseData, user, response);
 
         await _ctx.storage.saveUser(user).run();
         await _ctx.storage.saveSession(session).run();
@@ -206,6 +200,35 @@ final class Anonymous {
         _ctx.emitState(const Unauthenticated());
         return ErrorMapper.map(error, stackTrace);
       },
+    );
+  }
+
+  // === Helpers ===
+
+  /// Extract session from response, handling both legacy and bearer formats.
+  Session _extractSession(
+    Map<String, dynamic> data,
+    User user,
+    Response<dynamic> response,
+  ) {
+    final sessionData = data['session'] as Map<String, dynamic>?;
+    if (sessionData != null) {
+      return Session.fromJson(sessionData);
+    }
+    // Extract token from top level or response header
+    final token =
+        data['token'] as String? ?? response.headers.value('set-auth-token');
+    if (token == null) {
+      throw const UnknownError(
+        message: 'No session or token in response',
+        code: 'INVALID_RESPONSE',
+      );
+    }
+    return Session(
+      id: token,
+      userId: user.id,
+      token: token,
+      expiresAt: DateTime.now().add(const Duration(days: 30)),
     );
   }
 

@@ -106,12 +106,34 @@ final class SSO {
           throw _mapResponse(tokenResponse);
         }
 
-        // 5. Extract session
+        // 5. Extract user and session/token
         final data = tokenResponse.data as Map<String, dynamic>;
         final user = User.fromJson(data['user'] as Map<String, dynamic>);
-        final session = Session.fromJson(
-          data['session'] as Map<String, dynamic>,
-        );
+
+        // BetterAuth may return either:
+        // - 'session' object (legacy format)
+        // - 'token' at top level (bearer plugin format)
+        final Session session;
+        final sessionData = data['session'] as Map<String, dynamic>?;
+        if (sessionData != null) {
+          session = Session.fromJson(sessionData);
+        } else {
+          // Extract token from top level or response header
+          final token = data['token'] as String? ??
+              tokenResponse.headers.value('set-auth-token');
+          if (token == null) {
+            throw const UnknownError(
+              message: 'No session or token in response',
+              code: 'INVALID_RESPONSE',
+            );
+          }
+          session = Session(
+            id: token,
+            userId: user.id,
+            token: token,
+            expiresAt: DateTime.now().add(const Duration(days: 30)),
+          );
+        }
 
         await _ctx.storage.saveUser(user).run();
         await _ctx.storage.saveSession(session).run();

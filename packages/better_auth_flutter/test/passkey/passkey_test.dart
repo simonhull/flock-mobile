@@ -61,12 +61,8 @@ void main() {
       'updatedAt': now.toIso8601String(),
     };
 
-    final mockSessionJson = {
-      'id': 'session-123',
-      'userId': 'user-123',
-      'token': 'token-abc',
-      'expiresAt': expiresAt.toIso8601String(),
-    };
+    // BetterAuth returns token at top level, not inside a session object
+    const mockToken = 'token-abc';
 
     final mockRegistrationOptionsJson = {
       'challenge': 'registration-challenge',
@@ -377,7 +373,7 @@ void main() {
             '/api/auth/passkey/verify-authentication',
             (server) => server.reply(200, {
               'user': mockUserJson,
-              'session': mockSessionJson,
+              'token': mockToken,
             }),
             data: Matchers.any,
           );
@@ -406,7 +402,7 @@ void main() {
             '/api/auth/passkey/verify-authentication',
             (server) => server.reply(200, {
               'user': mockUserJson,
-              'session': mockSessionJson,
+              'token': mockToken,
             }),
             data: Matchers.any,
           );
@@ -437,7 +433,7 @@ void main() {
             '/api/auth/passkey/verify-authentication',
             (server) => server.reply(200, {
               'user': mockUserJson,
-              'session': mockSessionJson,
+              'token': mockToken,
             }),
             data: Matchers.any,
           );
@@ -466,7 +462,7 @@ void main() {
             '/api/auth/passkey/verify-authentication',
             (server) => server.reply(200, {
               'user': mockUserJson,
-              'session': mockSessionJson,
+              'token': mockToken,
             }),
             data: Matchers.any,
           );
@@ -499,7 +495,7 @@ void main() {
             '/api/auth/passkey/verify-authentication',
             (server) => server.reply(200, {
               'user': mockUserJson,
-              'session': mockSessionJson,
+              'token': mockToken,
             }),
             data: Matchers.any,
           );
@@ -528,7 +524,7 @@ void main() {
             '/api/auth/passkey/verify-authentication',
             (server) => server.reply(200, {
               'user': mockUserJson,
-              'session': mockSessionJson,
+              'token': mockToken,
             }),
             data: Matchers.any,
           );

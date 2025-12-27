@@ -1,6 +1,11 @@
 import 'package:better_auth_flutter/better_auth_flutter.dart';
 import 'package:flock/core/di/injection.dart';
+import 'package:flock/core/router/router.dart';
+import 'package:flock/core/theme/app_theme.dart';
+import 'package:flock/features/auth/bloc/auth_bloc.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,80 +16,43 @@ Future<void> main() async {
   runApp(const FlockApp());
 }
 
-class FlockApp extends StatelessWidget {
+class FlockApp extends StatefulWidget {
   const FlockApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flock',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
-      ),
-      home: const AuthStatusPage(),
-    );
-  }
+  State<FlockApp> createState() => _FlockAppState();
 }
 
-/// Temporary page to show auth client is working.
-class AuthStatusPage extends StatelessWidget {
-  const AuthStatusPage({super.key});
+class _FlockAppState extends State<FlockApp> {
+  late final AuthBloc _authBloc;
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    final authClient = getIt<BetterAuthClient>();
+    _authBloc = AuthBloc(authClient: authClient);
+    _router = createRouter(authBloc: _authBloc, authClient: authClient);
+
+    // Trigger initial auth check
+    _authBloc.add(const AuthCheckRequested());
+  }
+
+  @override
+  void dispose() {
+    _authBloc.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final authClient = getIt<BetterAuthClient>();
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Flock'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
-      body: StreamBuilder<AuthState>(
-        stream: authClient.authStateChanges,
-        builder: (context, snapshot) {
-          final state = snapshot.data ?? authClient.currentState;
-
-          return Center(
-            child: Column(
-              mainAxisAlignment: .center,
-              children: [
-                Icon(
-                  switch (state) {
-                    Authenticated() => Icons.check_circle,
-                    Unauthenticated() => Icons.person_off,
-                    AuthLoading() => Icons.hourglass_empty,
-                    AuthInitial() => Icons.help_outline,
-                  },
-                  size: 64,
-                  color: switch (state) {
-                    Authenticated() => Colors.green,
-                    Unauthenticated() => Colors.orange,
-                    AuthLoading() => Colors.blue,
-                    AuthInitial() => Colors.grey,
-                  },
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  switch (state) {
-                    Authenticated(:final user) => 'Signed in as ${user.email}',
-                    Unauthenticated() => 'Not signed in',
-                    AuthLoading() => 'Loading...',
-                    AuthInitial() => 'Initializing...',
-                  },
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Auth client is working!',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.grey,
-                      ),
-                ),
-              ],
-            ),
-          );
-        },
+    return BlocProvider.value(
+      value: _authBloc,
+      child: MaterialApp.router(
+        title: 'Flock',
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        routerConfig: _router,
       ),
     );
   }

@@ -3,15 +3,16 @@ abstract final class AuthFixtures {
   /// Default base URL for tests.
   static const baseUrl = 'https://api.example.com';
 
-  /// Creates a mock auth response with user and session.
+  /// Creates a mock auth response with user and token.
+  ///
+  /// BetterAuth returns the token at the top level, not inside a session object.
+  /// The client constructs a Session from the token and user data.
   static Map<String, dynamic> authResponse({
     String userId = 'user-123',
     String email = 'test@example.com',
     String? name = 'Test User',
     bool emailVerified = true,
-    String sessionId = 'session-123',
     String token = 'token-abc',
-    Duration expiresIn = const Duration(days: 7),
     bool isAnonymous = false,
   }) {
     return {
@@ -22,12 +23,7 @@ abstract final class AuthFixtures {
         emailVerified: emailVerified,
         isAnonymous: isAnonymous,
       ),
-      'session': session(
-        id: sessionId,
-        token: token,
-        userId: userId,
-        expiresIn: expiresIn,
-      ),
+      'token': token,
     };
   }
 
@@ -70,7 +66,6 @@ abstract final class AuthFixtures {
   /// Creates an anonymous auth response.
   static Map<String, dynamic> anonymousAuthResponse({
     String userId = 'anon-user-123',
-    String sessionId = 'session-456',
     String token = 'anon-token-abc',
   }) {
     return authResponse(
@@ -78,9 +73,7 @@ abstract final class AuthFixtures {
       email: '',
       name: null,
       emailVerified: false,
-      sessionId: sessionId,
       token: token,
-      expiresIn: const Duration(days: 30),
       isAnonymous: true,
     );
   }

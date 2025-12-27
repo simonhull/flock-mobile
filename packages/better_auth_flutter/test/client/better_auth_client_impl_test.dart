@@ -24,12 +24,8 @@ void main() {
       'updatedAt': now.toIso8601String(),
     };
 
-    final mockSessionJson = {
-      'id': 'session-123',
-      'userId': '123',
-      'token': 'token-abc',
-      'expiresAt': expiresAt.toIso8601String(),
-    };
+    // BetterAuth returns token at top level, not inside a session object
+    const mockToken = 'token-abc';
 
     setUp(() {
       mockDio = MockDio();
@@ -69,7 +65,7 @@ void main() {
           ),
         ).thenAnswer(
           (_) async => Response(
-            data: {'user': mockUserJson, 'session': mockSessionJson},
+            data: {'user': mockUserJson, 'token': mockToken},
             statusCode: 200,
             requestOptions: RequestOptions(),
           ),
@@ -136,7 +132,7 @@ void main() {
           ),
         ).thenAnswer(
           (_) async => Response(
-            data: {'user': mockUserJson, 'session': mockSessionJson},
+            data: {'user': mockUserJson, 'token': mockToken},
             statusCode: 200,
             requestOptions: RequestOptions(),
           ),
@@ -261,7 +257,7 @@ void main() {
           ),
         ).thenAnswer(
           (_) async => Response(
-            data: {'user': mockUserJson, 'session': mockSessionJson},
+            data: {'user': mockUserJson, 'token': mockToken},
             statusCode: 200,
             requestOptions: RequestOptions(),
           ),
@@ -370,7 +366,7 @@ void main() {
           ),
         ).thenAnswer(
           (_) async => Response(
-            data: {'user': mockUserJson, 'session': mockSessionJson},
+            data: {'user': mockUserJson, 'token': mockToken},
             statusCode: 200,
             requestOptions: RequestOptions(),
           ),

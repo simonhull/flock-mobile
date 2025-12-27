@@ -115,9 +115,7 @@ void main() {
       email: 'upgraded@example.com',
       name: 'New User',
       emailVerified: false,
-      sessionId: 'session-789',
       token: 'linked-token-xyz',
-      expiresIn: const Duration(days: 30),
     );
 
     test('links email and returns Authenticated', () async {
@@ -344,9 +342,7 @@ void main() {
       email: 'upgraded@example.com',
       name: 'New User',
       emailVerified: false,
-      sessionId: 'session-789',
       token: 'linked-token-xyz',
-      expiresIn: const Duration(days: 30),
     );
 
     setUp(() {
