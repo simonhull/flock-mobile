@@ -1,5 +1,6 @@
 import 'package:better_auth_flutter/better_auth_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:fpdart/fpdart.dart' hide State;
 import 'package:go_router/go_router.dart';
 
@@ -86,8 +87,8 @@ final class _SuccessView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.check_circle,
+            const FaIcon(
+              FontAwesomeIcons.circleCheck,
               size: 80,
               color: Colors.green,
             ),
@@ -133,8 +134,8 @@ final class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
+            FaIcon(
+              FontAwesomeIcons.circleExclamation,
               size: 80,
               color: Theme.of(context).colorScheme.error,
             ),

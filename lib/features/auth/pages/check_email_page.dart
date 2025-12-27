@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 
 /// Page shown after registration to prompt email verification.
@@ -23,8 +24,8 @@ final class CheckEmailPage extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(
-                Icons.mark_email_unread_outlined,
+              FaIcon(
+                FontAwesomeIcons.envelope,
                 size: 80,
                 color: theme.colorScheme.primary,
               ),

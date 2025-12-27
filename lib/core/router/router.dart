@@ -14,6 +14,7 @@ import 'package:flock/features/auth/pages/reset_password_page.dart';
 import 'package:flock/features/auth/pages/verify_email_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 
 /// Creates the app router with auth guards.
@@ -125,7 +126,7 @@ class HomePage extends StatelessWidget {
         title: const Text('Flock'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const FaIcon(FontAwesomeIcons.arrowRightFromBracket),
             onPressed: () =>
                 context.read<AuthBloc>().add(const AuthSignOutRequested()),
           ),
@@ -137,7 +138,11 @@ class HomePage extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.check_circle, size: 64, color: Colors.green),
+                const FaIcon(
+                  FontAwesomeIcons.circleCheck,
+                  size: 64,
+                  color: Colors.green,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Welcome, ${state.user?.name ?? state.user?.email ?? 'User'}!',

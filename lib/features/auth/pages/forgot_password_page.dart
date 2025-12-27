@@ -3,6 +3,7 @@ import 'package:flock/features/auth/widgets/auth_button.dart';
 import 'package:flock/features/auth/widgets/auth_text_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 
 /// Forgot password page for requesting password reset email.
@@ -57,7 +58,7 @@ final class _ForgotPasswordView extends StatelessWidget {
             Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_back),
+                  icon: const FaIcon(FontAwesomeIcons.arrowLeft),
                   onPressed: () => context.pop(),
                 ),
               ],

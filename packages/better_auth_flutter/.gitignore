@@ -1,0 +1,21 @@
+# Flutter/Dart generated
+.dart_tool/
+.packages
+.pub/
+build/
+*.iml
+
+# Coverage
+coverage/
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# IDE
+.idea/
+*.iws
+
+# Dependency lock (optional - uncomment if you want to track it)
+# pubspec.lock
