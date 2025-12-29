@@ -125,6 +125,63 @@ result.fold((l) => ..., (r) => ...);
 
 ---
 
+## Network Layer (ApiClient)
+
+The `ApiClient` wraps Dio with automatic auth token injection and consistent error handling.
+
+### Usage in Data Sources
+```dart
+final class ProfileRemoteDataSourceImpl implements ProfileRemoteDataSource {
+  const ProfileRemoteDataSourceImpl(this._client);
+  final ApiClient _client;
+
+  @override
+  TaskEither<Failure, ProfileModel> getProfile() => _client
+      .get('/profile')
+      .map((json) => ProfileModel.fromJson(json['data'] as Map<String, dynamic>));
+}
+```
+
+### Failure Types (sealed class)
+```dart
+sealed class Failure extends Equatable {
+  const Failure(this.message);
+  final String message;
+}
+
+final class NetworkFailure extends Failure { ... }
+final class ServerFailure extends Failure { ... }
+final class AuthFailure extends Failure { ... }
+final class ValidationFailure extends Failure { ... }
+final class NotFoundFailure extends Failure { ... }
+final class UnexpectedFailure extends Failure { ... }
+```
+
+### Use Case Pattern
+```dart
+final class CreateProfile {
+  const CreateProfile(this._repository);
+  final ProfileRepository _repository;
+
+  TaskEither<Failure, Profile> call(CreateProfileParams params) =>
+      _repository.createProfile(params);
+}
+```
+
+### Bloc with Use Cases
+```dart
+Future<void> _onSubmitted(...) async {
+  final result = await _createProfile(params).run();
+
+  emit(switch (result) {
+    Right(:final value) => state.copyWith(status: .success, profile: value),
+    Left(:final value) => state.copyWith(status: .failure, errorMessage: value.message),
+  });
+}
+```
+
+---
+
 ## Offline-First (drift)
 
 - **Local-first**: Read from drift, sync with API in background

@@ -32,7 +32,10 @@ class _FlockAppState extends State<FlockApp> {
     super.initState();
     final authClient = getIt<BetterAuthClient>();
     _authBloc = AuthBloc(authClient: authClient);
-    _router = createRouter(authBloc: _authBloc, authClient: authClient);
+    _router = createRouter(
+      authBloc: _authBloc,
+      authClient: authClient,
+    );
 
     // Trigger initial auth check
     _authBloc.add(const AuthCheckRequested());

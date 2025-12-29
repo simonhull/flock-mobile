@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:better_auth_flutter/better_auth_flutter.dart';
+import 'package:flock/core/di/injection.dart';
 import 'package:flock/features/auth/bloc/auth_bloc.dart';
 import 'package:flock/features/auth/bloc/forgot_password_bloc.dart';
 import 'package:flock/features/auth/bloc/login_bloc.dart';
@@ -12,6 +13,8 @@ import 'package:flock/features/auth/pages/login_page.dart';
 import 'package:flock/features/auth/pages/register_page.dart';
 import 'package:flock/features/auth/pages/reset_password_page.dart';
 import 'package:flock/features/auth/pages/verify_email_page.dart';
+import 'package:flock/features/onboarding/onboarding.dart';
+import 'package:flock/shared/shared.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -49,6 +52,15 @@ GoRouter createRouter({
       GoRoute(
         path: '/',
         builder: (context, state) => const HomePage(),
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => BlocProvider(
+          create: (_) => OnboardingBloc(
+            createProfile: getIt<CreateProfile>(),
+          ),
+          child: const OnboardingPage(),
+        ),
       ),
       GoRoute(
         path: '/login',
@@ -121,22 +133,56 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Flock'),
-        actions: [
-          IconButton(
-            icon: const FaIcon(FontAwesomeIcons.arrowRightFromBracket),
-            onPressed: () =>
-                context.read<AuthBloc>().add(const AuthSignOutRequested()),
+    return BlocBuilder<AuthBloc, AuthBlocState>(
+      builder: (context, state) {
+        final user = state.user;
+        // Parse name into first/last for avatar initials
+        final nameParts = (user?.name ?? '').split(' ');
+        final firstName = nameParts.isNotEmpty ? nameParts.first : null;
+        final lastName = nameParts.length > 1 ? nameParts.last : null;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Flock'),
+            actions: [
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'sign_out') {
+                    context.read<AuthBloc>().add(const AuthSignOutRequested());
+                  }
+                },
+                offset: const Offset(0, 48),
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'sign_out',
+                    child: Row(
+                      children: [
+                        FaIcon(
+                          FontAwesomeIcons.arrowRightFromBracket,
+                          size: 16,
+                        ),
+                        SizedBox(width: 12),
+                        Text('Sign out'),
+                      ],
+                    ),
+                  ),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: UserAvatar(
+                    imageUrl: user?.image,
+                    firstName: firstName,
+                    lastName: lastName,
+                    email: user?.email,
+                    size: 36,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: BlocBuilder<AuthBloc, AuthBlocState>(
-        builder: (context, state) {
-          return Center(
+          body: Center(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisAlignment: .center,
               children: [
                 const FaIcon(
                   FontAwesomeIcons.circleCheck,
@@ -145,21 +191,21 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Welcome, ${state.user?.name ?? state.user?.email ?? 'User'}!',
+                  'Welcome, ${user?.name ?? user?.email ?? 'User'}!',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  state.user?.email ?? '',
+                  user?.email ?? '',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: Theme.of(context).colorScheme.outline,
                       ),
                 ),
               ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
